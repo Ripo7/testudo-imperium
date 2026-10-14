@@ -17,7 +17,7 @@ import { applyPanels, defaultHint, focusOn, goTo, log, logItems, PANELS, resetCr
 import { chartHover, chartLeave, renderReport, REP } from './report.js';
 import { clock } from './format.js';
 import { buildMapLabels } from './labels.js';
-import { restoreGame, resumeCampaign, saveGame, showTitle } from '../game/save.js';
+import { restoreGame, resumeCampaign, saveGame, showTitle } from './persist.js';
 import { DIR, setFollow, togglePolitical } from './director.js';
 
 /* =========================================================

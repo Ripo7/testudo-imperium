@@ -1,5 +1,5 @@
 import { THREE } from '../three.js';
-import { seesArmy } from '../game/sight.js';
+import { seesArmy } from '../ui/view.js';
 import { GS } from '../game/state.js';
 import { clamp, isTouch, smooth, TAU } from '../core/util.js';
 import { rng32 } from '../map/generate.js';

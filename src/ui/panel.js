@@ -1,5 +1,5 @@
 import { groundInfo, mergeArmies, nearestCity, orderTarget, pathTime, splitArmy } from '../game/armies.js';
-import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
+import { seesArmy, seesBattle, seesCity } from './view.js';
 import { atWar, declareWar, mins, peaceAnswer, relOf, renewTreaty, suePeace, treatyAnswer, wearyWord } from '../game/diplomacy.js';
 import { DISPUTED, holdsIn, placesOf, provSecure, provW, SET_W } from '../game/standing.js';
 import { canAfford, dist, emptyComp, GS, MAP, menOf, ownerName, provAt, starsOf } from '../game/state.js';
@@ -38,8 +38,8 @@ export function doAct(act) {
     case 'dip': if (GS.auto) UI.selOver = 'wars'; else { clearSel(true); UI.selDip = +arg; UI.dipMsg = ''; } break;
     case 'recruit': if (c && recruit(F, c, arg)) Sfx.click(); else { Sfx.deny(); flashHint(c && c.queue.length >= 5 ? 'Recruitment queue is full.' : 'Not enough resources.'); } break;
     case 'walls': if (c && fortify(F, c)) Sfx.thunk(); else { Sfx.deny(); flashHint('Not enough resources.'); } break;
-    case 'peace': { if (suePeace(+arg)) Sfx.horn(); else Sfx.deny(); updateHUD(); break; }
-    case 'treaty': { if (renewTreaty(+arg)) Sfx.click(); else Sfx.deny(); break; }
+    case 'peace': { const r = suePeace(+arg); UI.dipMsg = r.msg; if (r.ok) Sfx.horn(); else Sfx.deny(); updateHUD(); break; }
+    case 'treaty': { const r = renewTreaty(+arg); UI.dipMsg = r.msg; if (r.ok) Sfx.click(); else Sfx.deny(); break; }
     case 'war': { declareWar(PLAYER, +arg); UI.dipMsg = ''; break; }
     case 'imp': if (c && buildImp(F, c, arg)) Sfx.thunk(); else { Sfx.deny(); flashHint('Not enough resources.'); } break;
     case 'retreat': { let n = 0; for (const a of UI.sel) if (!a.dead && retreatArmy(a)) n++; if (n) Sfx.click(); else { Sfx.deny(); flashHint('Too early to disengage, or the walls hold you.'); } break; }

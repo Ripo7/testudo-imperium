@@ -80,6 +80,7 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 - **controls**: on a phone, the dock steps through the armies, pauses and changes speed; a tap plans a march and a second tap gives it; a tap on an enemy town shows the odds; a long press adds an army to the selection; the layout held upright and sideways. On a desktop, the keys that step through the armies.
 - **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
 - **determinism**: the same seed gives exactly the same game, whatever sounds and effects do with their own random numbers, and a war saved and loaded goes on exactly as if it had never stopped.
+- **headless**: the simulation runs in plain Node, without a browser, and ten minutes of war there match the browser's exactly, byte for byte (the tuning tools play their wars this way).
 - **save & resume**: play, close the tab, reopen, and check the restored game matches the save exactly.
 
 GitHub Actions runs the same suite on every push and pull request (`.github/workflows/ci.yml`).

@@ -1,15 +1,17 @@
-import { atWar, fname, hideEnvoy, makePeace, relOf, treatyOn, warsOf } from '../game/diplomacy.js';
+import { atWar, endEnvoy, makePeace, mins, relOf, treatyOn, warsOf } from '../game/diplomacy.js';
+import { setHooks } from '../game/hooks.js';
 import { DISPUTED, holdsIn, placesOf, STAND } from '../game/standing.js';
 import { GS, MAP, menOf, ownerName } from '../game/state.js';
 import { $, isTouch, store } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { CAM, projectCell } from '../render/camera.js';
+import { buildFortMesh, refreshCityMesh, refreshFortMesh, removeFortMesh } from '../render/cities.js';
 import { FACTIONS, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
-import { clock, fcss, fmt, fmtInt, fmtRate, GLYPH, IC } from './format.js';
+import { clock, fcss, fmt, fmtInt, fmtRate, fname, GLYPH, IC } from './format.js';
 import { _pp, $hint, $log, clearSel, cycleArmy, idleArmies, ME, UI } from './state.js';
-import { renderPanel } from './panel.js';
+import { onImpDone, renderPanel } from './panel.js';
 import { showOver } from './screens.js';
-import { clearSave } from '../game/save.js';
+import { clearSave } from './persist.js';
 import { battleMen, DIR, manualCam, setFollow, togglePolitical } from './director.js';
 import { alertsHtml, computeAlerts, warsList } from './alerts.js';
 import { sampleAgo } from '../game/chronicle.js';
@@ -187,11 +189,11 @@ export function toggleOverview(tab) {
   Sfx.click(); renderPanel(true); updateHUD();
 }
 $('envoy').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-env]'); if (!b || !UI.envoy) return;
-  const E = UI.envoy;
+  const b = e.target.closest('[data-env]'); if (!b || !GS.envoy) return;
+  const E = GS.envoy;
   if (b.dataset.env === 'yes' && atWar(PLAYER, E.g)) { makePeace(PLAYER, E.g, TREATY_TIME, E.gold ? E.g : null, E.gold); Sfx.horn(); }
   else { relOf(PLAYER, E.g).nd[PLAYER] = GS.time + 90; log(`${pName()} sends the envoys of ${fname(E.g)} home.`, 'info'); Sfx.click(); }
-  hideEnvoy(); updateHUD(); renderPanel(true);
+  endEnvoy(); updateHUD(); renderPanel(true);
 });
 $('standRows').addEventListener('pointerdown', (e) => {
   if (e.target.closest('[data-wars]')) { toggleOverview('wars'); return; }
@@ -236,7 +238,39 @@ export function defaultHint() {
   if ($hint.innerHTML !== t) $hint.innerHTML = t;
 }
 
-/* ---------- simulation hooks ---------- */
+/* ---------- simulation hooks (see game/hooks.js): what the screen shows and plays when things happen ---------- */
+// Start-up wiring, run once from main.js before anything else
+export function initHooks() {
+  setHooks({
+    battleStart: onBattleStart, battleEnd: onBattleEnd, retreated: onRetreated, cityCaptured: onCityCaptured,
+    cityChanged: refreshCityMesh, fortBuilt: buildFortMesh, fortChanged: refreshFortMesh, fortRemoved: removeFortMesh,
+    recruited: onRecruited, wallsDone: onWallsDone, impDone: onImpDone, armiesMerged: onArmiesMerged,
+    warDeclared: onWarDeclared, peaceMade: onPeaceMade, envoy: onEnvoy, eliminated: onEliminated, warOver: onWarOver,
+  });
+}
+export function onArmiesMerged(into, from) {
+  if (UI.selEnemy === from) UI.selEnemy = into;
+  if (UI.sel.includes(from)) { UI.sel = UI.sel.filter((x) => x !== from); if (!UI.sel.includes(into) && into.owner === ME) UI.sel.push(into); }
+}
+export function onRetreated(a, loss) { if (a.owner === ME && !GS.auto) log(`Our army <b>retreats</b>, losing ${Math.round(loss * 100)}% to the pursuit.`, 'info', a); }
+export function onWarDeclared(f, g, broke) {
+  const mine = !GS.auto && (f === ME || g === ME);
+  log(`${fname(f)} ${broke ? 'breaks its treaty and ' : ''}declares war on ${fname(g)}.`, mine ? 'bad' : 'info');
+  if (mine && g === ME) Sfx.horn();
+}
+export function onPeaceMade(f, g, payer, paid) {
+  log(`${fname(f)} and ${fname(g)} make peace${paid ? ` · ${ownerName(payer)} pays ${paid} gold` : ''}.`, !GS.auto && (f === ME || g === ME) ? 'good' : 'info');
+}
+// an AI power's envoys ask the player for peace (E: GS.envoy), or leave (null)
+export function onEnvoy(E) {
+  const el = $('envoy');
+  if (!E) { el.classList.add('hidden'); return; }
+  const G = GS.factions[E.g];
+  el.innerHTML = `<i style="background:${G.css}"></i><span><b>${G.name}</b> sends envoys: peace${E.gold ? `, and <b>${E.gold} gold</b> for ${pName()}` : ''}. The treaty would bind for ${mins(TREATY_TIME)} minutes.</span><button class="abtn primary" data-env="yes">Accept</button><button class="abtn" data-env="no">Refuse</button>`;
+  el.classList.remove('hidden');
+  log(`Envoys from ${fname(E.g)} ask for peace.`, 'info');
+  Sfx.horn();
+}
 export const sideOf = (B, f) => (B.sides[0].faction === f ? 0 : B.sides[1].faction === f ? 1 : -1);
 export function onBattleStart(B) {
   if (GS.auto && DIR.on && !DIR.busy() && DIR.hold < 1e8 && battleMen(B) > 700) DIR.hold = Math.min(DIR.hold, 0.6);
@@ -263,17 +297,14 @@ export function onBattleEnd(B) {
   }
   const ps = sideOf(B, ME);
   if (ps < 0) return;
-  GS.stats.battles++;
   const won = B.winner === ps;
   const ours = B.lost[ps], theirs = B.lost[1 - ps];
   const where = B.kind === 'city' ? ` at ${B.place.name}` : '';
   if (won) {
-    GS.stats.won++;
     log(`<b>Victory${where}.</b> ${fmtInt(theirs)} enemies fell, we lost ${fmtInt(ours)}.`, 'good', B);
     if (theirs > 350 && theirs > ours * 2) Sfx.bigHit();
     else Sfx.victory();
   } else {
-    GS.stats.lost++;
     log(`<b>Defeat${where}.</b> We lost ${fmtInt(ours)} men, they lost ${fmtInt(theirs)}.`, 'bad', B);
     Sfx.defeat();
   }
@@ -297,7 +328,6 @@ export function onCityCaptured(c, prev, f) {
     return;
   }
   if (f === ME) {
-    GS.stats.captured++;
     log(`<b>${c.name}</b> is ours!${left ? ` ${left} more place${left > 1 ? 's' : ''} to take in ${P.name}.` : ` The province of ${P.name} is ${pName()}'s.`}`, 'good', c);
   } else if (prev === ME) {
     log(`<b>${c.name}</b> has fallen to ${ownerName(f)}.${wasWhole ? ` ${P.name} is no longer ours alone: it is disputed.` : ''}`, 'bad', c);
@@ -311,21 +341,19 @@ export function onEliminated(F) {
   if (GS.auto && UI.viewF === F.id) { const nx = GS.factions.find((x) => x.alive); if (nx) UI.viewF = nx.id; }
   log(`<b>${F.name} has been wiped from the map.</b>`, 'good');
 }
-export function endCampaign(win) {
-  GS.over = win ? 'win' : 'lose';
+// the war is over (GS.over: 'win', 'lose' or 'auto'): stop the clock, forget the save, then the report
+export function onWarOver() {
   GS.speed = 0;
   clearSave();
-  if (win) Sfx.victory(); else Sfx.defeat();
-  setTimeout(showOver, 1400);
-}
-export function endAuto(W) {
-  GS.over = 'auto'; GS.winner = W.id;
-  GS.speed = 0;
-  clearSave();
-  Sfx.victory();
-  setFollow(false);
-  CAM.tx = 0; CAM.tz = 6; CAM.td = 150;
-  UI.viewF = W.id;
-  setTimeout(showOver, 1800);
+  if (GS.over === 'auto') {
+    Sfx.victory();
+    setFollow(false);
+    CAM.tx = 0; CAM.tz = 6; CAM.td = 150;
+    UI.viewF = GS.winner;
+    setTimeout(showOver, 1800);
+  } else {
+    if (GS.over === 'win') Sfx.victory(); else Sfx.defeat();
+    setTimeout(showOver, 1400);
+  }
 }
 export function focusOn(t) { const x = t.x, y = t.y; CAM.tx = x - (MAP.W - 1) / 2; CAM.tz = y - (MAP.H - 1) / 2; if (CAM.td > 70) CAM.td = 60; }

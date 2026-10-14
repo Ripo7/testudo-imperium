@@ -1,11 +1,11 @@
 import { knowsArmy } from './sight.js';
 import { atPeace } from './diplomacy.js';
 import { cellOf, dist, emptyComp, GS, MAP, menOf } from './state.js';
-import { clamp, dampAngle } from '../core/util.js';
+import { clamp, dampAngle } from '../core/math.js';
 import { BIOME, BIOME_NAME, Heap, MOVE, N8 } from '../map/generate.js';
-import { BASE_SPEED, PLAYER, sigOf, TYPES5 } from './data.js';
+import { BASE_SPEED, sigOf, TYPES5 } from './data.js';
 import { startSiege } from './battles.js';
-import { UI } from '../ui/state.js';
+import { HOOKS } from './hooks.js';
 
 /* =========================================================
    Armies
@@ -80,8 +80,7 @@ export function mergeArmies(into, from) {
   for (const t of TYPES5) into.comp[t] += from.comp[t];
   into.wins = Math.max(into.wins, from.wins);
   from.dead = true; from.mergedInto = into;
-  if (UI.selEnemy === from) UI.selEnemy = into;
-  if (UI.sel.includes(from)) { UI.sel = UI.sel.filter((x) => x !== from); if (!UI.sel.includes(into) && into.owner === PLAYER) UI.sel.push(into); }
+  HOOKS.armiesMerged(into, from);
 }
 
 /* ---------- pathfinding (A* on the grid) ---------- */

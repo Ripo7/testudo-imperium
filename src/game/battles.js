@@ -3,12 +3,10 @@ import { atPeace, atWar, declareWar, relOf } from './diplomacy.js';
 import { SET_W } from './standing.js';
 import { angDiff, cellOf, cloneComp, dist, emptyComp, GS, MAP, menOf, rnd, rndIn, starsOf } from './state.js';
 import { BIOME, BIOME_NAME, rng32 } from '../map/generate.js';
-import { refreshCityMesh, removeFortMesh } from '../render/cities.js';
-import { BALN, FORT_WALLS, K_DMG, NEUTRAL, ROUND_T, sigOf, TERRAIN_DEF, TW_CAV, TW_DEF, TYPES5, UNITS, VS } from './data.js';
+import { BALN, FORT_WALLS, K_DMG, NEUTRAL, PLAYER, ROUND_T, sigOf, TERRAIN_DEF, TW_CAV, TW_DEF, TYPES5, UNITS, VS } from './data.js';
 import { militiaMaxOf } from './campaign.js';
 import { findPath, nearestCity } from './armies.js';
-import { ME } from '../ui/state.js';
-import { log, onBattleEnd, onBattleStart, onCityCaptured } from '../ui/hud.js';
+import { HOOKS } from './hooks.js';
 import { recordBattle, recordCapture } from './chronicle.js';
 
 /* =========================================================
@@ -190,7 +188,7 @@ export function startBattle(kind, attArmies, defArmies, place, x, y) {
   for (const a of att) a.heading = Math.atan2(x - a.x, y - a.y);
   for (const a of def) a.heading = Math.atan2(att[0].x - a.x, att[0].y - a.y);
   GS.battles.push(B);
-  onBattleStart(B);
+  HOOKS.battleStart(B);
   return B;
 }
 export function startSiege(att, place, kind) {
@@ -263,11 +261,14 @@ export function endBattle(B, winner) {
     if (winner === 0) captureCity(B.place, B.sides[0].faction);
     else B.place.militia = Math.max(B.place.militia, 0);
   } else if (B.kind === 'fort') {
-    if (winner === 0) { B.place.dead = true; removeFortMesh(B.place); GS.forts = GS.forts.filter((f) => f !== B.place); }
+    if (winner === 0) { B.place.dead = true; HOOKS.fortRemoved(B.place); GS.forts = GS.forts.filter((f) => f !== B.place); }
   }
   B.lost = B.sides.map((S) => Math.round(sideLosses(S)));   // the pursuit included: what the chronicle, the stats and the messages report
   recordBattle(B);
-  onBattleEnd(B);
+  // the player's own tally (the end-of-war report)
+  const ps = GS.auto ? -1 : B.sides[0].faction === PLAYER ? 0 : B.sides[1].faction === PLAYER ? 1 : -1;
+  if (ps >= 0) { GS.stats.battles++; if (winner === ps) GS.stats.won++; else GS.stats.lost++; }
+  HOOKS.battleEnd(B);
 }
 export function roundComp(a) { for (const t of ['spear', 'leg', 'arch', 'cav']) a.comp[t] = Math.round(a.comp[t]); a.comp.siege = Math.floor(a.comp.siege + 0.3); }
 export function rout(a, B) {
@@ -288,8 +289,9 @@ export function captureCity(c, f) {
   c.owner = f; c.walls = Math.max(0, c.walls - 1); c.wallBuild = null; c.queue = [];
   c.impBuild = null; if (c.imps.length) c.imps.pop();   // the last building is looted
   c.militiaMax = militiaMaxOf(c); c.militia = c.militiaMax * 0.35; c.loyal = 0.3;
-  refreshCityMesh(c);
-  onCityCaptured(c, prev, f);
+  if (f === PLAYER && !GS.auto) GS.stats.captured++;
+  HOOKS.cityChanged(c);
+  HOOKS.cityCaptured(c, prev, f);
 }
 
 export function detectContacts() {
@@ -384,7 +386,7 @@ export function retreatArmy(a) {
   roundComp(a); a.battle = null; a.retreated = true;
   S.left = (S.left || 0) + armyMen(a);   // they got away: not counted as losses
   if (menOf(a.comp) < 15) a.dead = true; else { rout(a, B); a.routT = 4; }
-  if (a.owner === ME && !GS.auto) log(`Our army <b>retreats</b>, losing ${Math.round(loss * 100)}% to the pursuit.`, 'info', a);
+  HOOKS.retreated(a, loss);
   const empty = !S.armies.length && !(si === 1 && S.militia);
   if (empty) endBattle(B, 1 - si); else battleSetup(B);
   return true;

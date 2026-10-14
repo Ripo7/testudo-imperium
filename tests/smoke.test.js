@@ -49,7 +49,7 @@ export default async function smoke() {
       });
       check(!view.hidden.stand && view.hidden.tools && !view.hidden.log && !view.hidden.hint && view.back && view.stored === 'false', `[${label}] the eye hides the panels (keeping the tool buttons) and brings them back`);
       // the end of the war: the report with its charts, ledger, wars and key moments
-      await page.evaluate(() => { const T = window.__T; T.setNoRender(true); if (!T.GS.over) T.endCampaign(true); });   // the renderer off: software WebGL frames are slow
+      await page.evaluate(() => { const T = window.__T; T.setNoRender(true); if (!T.GS.over) T.endWar('win', T.PLAYER); });   // the renderer off: software WebGL frames are slow
       await page.waitForFunction(() => !document.getElementById('over').classList.contains('hidden'), null, { timeout: 60000, polling: 250 });
       const rep = await page.evaluate(() => { const R = document.getElementById('report'); return { charts: R.querySelectorAll('svg.ch').length, lines: R.querySelectorAll('svg.ch .ln').length, ledger: R.querySelectorAll('.rep-ledger tbody tr').length, econ: R.querySelectorAll('.ledger.econ tbody tr:not(.grp)').length, earned: [...R.querySelectorAll('.ledger.econ tr.total td')].map((td) => parseInt(td.textContent.replace(/,/g, ''), 10)), moments: R.querySelectorAll('.rep-moments .ce').length, width: R.scrollWidth <= R.clientWidth + 1,
         spill: [...R.querySelectorAll('*')].filter((el) => el.getBoundingClientRect().right > R.getBoundingClientRect().right + 1 && !el.closest('.tblwrap')).slice(0, 3).map((el) => `${el.tagName}.${el.getAttribute('class') || ''} ${(el.textContent || '').slice(0, 30)}`) }; });

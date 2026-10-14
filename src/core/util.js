@@ -3,14 +3,9 @@ import { THREE } from '../three.js';
 /* =========================================================
    Helpers
    ========================================================= */
-export const TAU = Math.PI * 2;
+export { TAU, clamp, lerp, damp, dampAngle, smooth } from './math.js';
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const randi = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
-export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-export const lerp = (a, b, t) => a + (b - a) * t;
-export const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
-export const dampAngle = (a, b, k, dt) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * (1 - Math.exp(-k * dt));
-export const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
 export const $ = (id) => document.getElementById(id);
 export function mulberry32(a) {
   return function () {

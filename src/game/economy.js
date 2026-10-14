@@ -2,15 +2,13 @@ import { atWar } from './diplomacy.js';
 import { fairShare, holdsIn, OVER_SLOW, provSecure, provW, SECURE, SET_W, updateStanding } from './standing.js';
 import { canAfford, cellOf, emptyComp, GS, MAP, menOf, pay, provAt } from './state.js';
 import { BIOME } from '../map/generate.js';
-import { buildFortMesh, refreshCityMesh, refreshFortMesh } from '../render/cities.js';
 import {
   buildTime, diffOf, FORT_GUARD, FORT_MAX, FORT_TIME, fortCost, hasImp, impCost, IMPS, impSlots, LOYAL_TIME,
   MARKET, PAY, perkOf, PLUNDER, RES, sigOf, U, unitCost, UNITS, unitTime, WALL_TIME, wallCost,
 } from './data.js';
 import { militiaMaxOf } from './campaign.js';
 import { makeArmy } from './armies.js';
-import { onImpDone } from '../ui/panel.js';
-import { onRecruited, onWallsDone } from '../ui/hud.js';
+import { HOOKS } from './hooks.js';
 import { bump, costSum, recordEconomy } from './chronicle.js';
 
 // gold paid for, or received for, 100 food, wood or stone
@@ -43,13 +41,13 @@ export function economy(dt) {
     if (c.loyal < 1) c.loyal = Math.min(1, c.loyal + dt * (temple ? 3 : 1) / (LOYAL_TIME * (own ? 1 + OVER_SLOW * Math.max(0, own.share - fair) : 1)));
     if (own && c.impBuild) {
       const ib = c.impBuild; ib.t += dt / (IMPS[ib.id].time * buildTime(c.owner));
-      if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); onImpDone(c, ib.id); }
+      if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); HOOKS.impDone(c, ib.id); }
     }
     if (own && !(c.battle && !c.battle.done)) { const k = 0.8 * c.loyal * (temple ? 1 - (1 - own.stretch) * 0.5 : own.stretch) * (own.isPlayer ? 1 : diffOf().inc), y = cityYield(c, c.owner), l = landShare(c), pk = plunderer(c.prov, c.owner) ? PLUNDER : 1; for (const r of RES) own.inc[r] += (y[r] + l[r] * pk) * k; if (pk < 1) bump(c.owner, 'plund', costSum(l) * (1 - pk) * k * dt); }
     // militia regen
     if (!(c.battle && !c.battle.done) && c.militia < c.militiaMax) c.militia = Math.min(c.militiaMax, c.militia + c.militiaMax * 0.012 * dt);
     // building walls
-    if (c.wallBuild) { c.wallBuild.t += dt / (WALL_TIME[c.wallBuild.level] * buildTime(c.owner)); if (c.wallBuild.t >= 1) { c.walls = c.wallBuild.level; c.wallBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); refreshCityMesh(c); onWallsDone(c); } }
+    if (c.wallBuild) { c.wallBuild.t += dt / (WALL_TIME[c.wallBuild.level] * buildTime(c.owner)); if (c.wallBuild.t >= 1) { c.walls = c.wallBuild.level; c.wallBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); HOOKS.cityChanged(c); HOOKS.wallsDone(c); } }
     // recruiting
     if (c.queue.length && c.owner >= 0 && !(c.battle && !c.battle.done)) {
       const q = c.queue[0];
@@ -58,7 +56,7 @@ export function economy(dt) {
     }
   }
   for (const f of GS.forts) {
-    if (f.built < 1) { f.built = Math.min(1, f.built + dt / (FORT_TIME * buildTime(f.owner))); f.militia = FORT_MAX * f.built * 0.6; refreshFortMesh(f); }
+    if (f.built < 1) { f.built = Math.min(1, f.built + dt / (FORT_TIME * buildTime(f.owner))); f.militia = FORT_MAX * f.built * 0.6; HOOKS.fortChanged(f); }
     else if (!(f.battle && !f.battle.done)) f.militia = Math.min(FORT_MAX, f.militia + FORT_MAX * 0.02 * dt);
   }
   for (const a of GS.armies) {
@@ -123,7 +121,7 @@ export function spawnRecruits(c, type) {
   }
   a.comp[type] += add;
   if (type !== 'siege') bump(c.owner, 'raised', add);
-  onRecruited(c, type, a);
+  HOOKS.recruited(c, type, a);
 }
 export function recruit(F, c, type) {
   if (c.owner !== F.id || c.queue.length >= 5 || (c.battle && !c.battle.done)) return false;
@@ -172,6 +170,6 @@ export function buildFort(F, x, y) {
   const f = { id: GS.nextId++, owner: F.id, x: Math.round(x), y: Math.round(y), built: 0, militia: 0, dead: false, battle: null };
   GS.forts.push(f);
   bump(F.id, 'works'); bump(F.id, 'sBuild', costSum(cost));
-  buildFortMesh(f);
+  HOOKS.fortBuilt(f);
   return f;
 }

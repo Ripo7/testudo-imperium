@@ -1,9 +1,9 @@
-import { atWar, fname, relOf, wearyWord } from '../game/diplomacy.js';
+import { atWar, relOf, wearyWord } from '../game/diplomacy.js';
 import { cityOf, sawIt } from '../game/chronicle.js';
 import { DISPUTED, holdsIn, STAND } from '../game/standing.js';
 import { GS, MAP, menOf, starsOf } from '../game/state.js';
 import { FACTIONS, IMPS, PEACE_TIME, RES } from '../game/data.js';
-import { clock, fmtInt, fmtRate, GLYPH, IC, icOf } from './format.js';
+import { clock, fmtInt, fmtRate, fname, GLYPH, IC, icOf } from './format.js';
 import { ME, UI } from './state.js';
 import { armyStatus, headerHtml } from './panel.js';
 

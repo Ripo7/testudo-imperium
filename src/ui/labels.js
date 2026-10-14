@@ -1,4 +1,4 @@
-import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
+import { seesArmy, seesBattle, seesCity } from './view.js';
 import { GS, MAP, menOf, starsOf } from '../game/state.js';
 import { $, clamp } from '../core/util.js';
 import { cellToWorld } from '../render/world.js';

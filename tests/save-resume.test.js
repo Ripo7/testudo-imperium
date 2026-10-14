@@ -107,7 +107,7 @@ async function scenarioOnce(browser, url, modeBtn, label) {
   }
   if (label === 'rome') {
     await click(page, '#contBtn'); await page.waitForTimeout(200);
-    await T(page, () => window.__T.endCampaign(true));
+    await T(page, () => window.__T.endWar('win', window.__T.PLAYER));
     check((await saved(page)) === null, `[${label}] finished campaign clears the save`);
   }
   check(!errors.length, `[${label}] no script errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);

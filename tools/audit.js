@@ -22,7 +22,7 @@ const PROBES = [
   ['roundComp(a); a.battle = null; a.retreated = true;', A("'retreat'")],
   ['function captureCity(c, f) {\n  const prev = c.owner;', A("'capture'", "c.major ? 'major' : 'town'", "prev >= 0 ? 'fromPower' : 'fromNeutral'") + " if (c.imps && c.imps.length && f >= 0)" + A("'captureLootsImp'")
     + " if (f >= 0 && GS.forts.some((x) => !x.dead && x.built >= 1 && x.owner !== f && MAP.prov[Math.round(x.y) * MAP.W + Math.round(x.x)] === c.prov))" + A("'captureInProvinceWithEnemyFort'")],
-  ['  GS.battles.push(B);\n  onBattleStart(B);', `
+  ['  GS.battles.push(B);\n  HOOKS.battleStart(B);', `
   ${A("'battle'", 'kind', "defFaction >= 0 ? 'vsPower' : 'vsNeutral'")}
   if (kind === 'field') {${A("'field'", "B.river ? 'river' : 'noRiver'")}${A("'field'", "B.flank ? 'flank' : 'noFlank'")}${A("'field'", "B.rough ? 'rough' : 'open'")} }
   if (kind === 'city') {${A("'citySiege'", "'walls' + place.walls", "B.sides[0].armies.some((a) => a.comp.siege >= 1) ? 'withEngines' : 'noEngines'")} }
