@@ -1,3 +1,4 @@
+import { seesArmy, seesBattle } from '../game/sight.js';
 import { GS, MAP, menOf } from '../game/state.js';
 import { $, clamp, damp } from '../core/util.js';
 import { CAM } from '../render/camera.js';
@@ -26,17 +27,17 @@ export function setFollow(on) {
 export function manualCam() { if (DIR.on) { setFollow(false); flashHint('Camera released · press <b>Follow</b> (F) to give it back'); } }
 export function directorPick() {
   // a selected army is followed; otherwise the biggest fight, then the biggest army on the march
-  if (UI.selEnemy && !UI.selEnemy.dead) return { kind: 'army', ref: UI.selEnemy, hold: 1e9 };
+  if (UI.selEnemy && !UI.selEnemy.dead && seesArmy(UI.selEnemy)) return { kind: 'army', ref: UI.selEnemy, hold: 1e9 };
   let best = null, bs = 0;
   for (const B of GS.battles) {
-    if (B.done) continue;
+    if (B.done || !seesBattle(B)) continue;
     const s = battleMen(B) * (B.kind === 'city' && B.place.major ? 1.6 : 1) * (B === DIR.lastB ? 0.6 : 1);
     if (s > bs) { bs = s; best = B; }
   }
   if (best && bs > 250) { DIR.lastB = best; return { kind: 'battle', ref: best, hold: 6 }; }
   let ba = null, am = 0;
   for (const a of GS.armies) {
-    if (a.dead || a.state !== 'move' || !a.target || a.target.kind === 'merge') continue;
+    if (a.dead || a.state !== 'move' || !a.target || a.target.kind === 'merge' || !seesArmy(a)) continue;
     if (a.target.ref.owner === a.owner) continue;
     const m = menOf(a.comp);
     if (m > am) { am = m; ba = a; }

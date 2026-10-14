@@ -1,3 +1,4 @@
+import { knowsArmy } from './sight.js';
 import { atPeace } from './diplomacy.js';
 import { cellOf, dist, emptyComp, GS, MAP, menOf } from './state.js';
 import { clamp, dampAngle } from '../core/util.js';
@@ -166,7 +167,14 @@ export function updateArmy(a, dt) {
     if (invalid) { a.target = null; if (a.state === 'move' && (T.kind === 'army' || T.kind === 'merge')) { a.path = null; a.state = 'idle'; } }
     else if ((T.kind === 'army' || T.kind === 'merge') && a.state !== 'rout') {
       a.repathT -= dt;
-      if (a.repathT <= 0) { a.repathT = 1.5; setPath(a, T.ref.x, T.ref.y); }
+      if (a.repathT <= 0) {
+        a.repathT = 1.5;
+        if (T.kind === 'army' && !knowsArmy(a.owner, T.ref)) {
+          // out of sight: march on to where it was last seen, and give up after a while
+          a.lostT = (a.lostT || 0) + 1.5;
+          if (a.lostT > 20) { a.target = null; a.lostT = 0; }
+        } else { a.lostT = 0; setPath(a, T.ref.x, T.ref.y); }
+      }
       if (T.kind === 'merge' && dist(a, T.ref) < 1.3 && T.ref.state !== 'battle') { mergeArmies(T.ref, a); return; }
     }
   }

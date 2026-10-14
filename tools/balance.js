@@ -1,14 +1,17 @@
 // Balance check: AI-vs-AI wars to the end. Prints win rates, war length and economy snapshots.
-//   npm run balance -- [wars=40] [workers=3]
+//   npm run balance -- [wars=40] [workers=3] [--nofog]
 import fs from 'node:fs';
 import path from 'node:path';
 import { serve, ROOT } from '../tests/helpers.js';
 import { runWars, quantiles, NAMES } from './wars.js';
 
-const N = +process.argv[2] || 40, WORKERS = +process.argv[3] || 3;
+const FOG = !process.argv.includes('--nofog');
+const ARGS = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const N = +ARGS[0] || 40, WORKERS = +ARGS[1] || 3;
 const WAR = `async (seed) => {
   const T = window.__T; T.setNoRender(true);
   T.prepareCampaign(seed); T.setAuto(true); T.GS.speed = 0;
+  T.GS.fog = ${FOG}; T.GS.sightT = 0;   // the fog of war is on by default; --nofog for wars with full information
   const snaps = {};
   while (!T.GS.over && T.GS.time < 3600) {
     for (let i = 0; i < 50; i++) { T.simStep(0.1); if (T.GS.over) break; }
@@ -35,7 +38,7 @@ site.close();
 
 const wins = NAMES.map((_, f) => R.filter((r) => r.winner === f).length);
 const q = quantiles(R.map((r) => r.time / 60));
-console.log(`\n${R.length} wars`);
+console.log(`\n${R.length} wars${FOG ? ', fog of war on' : ', no fog'}`);
 console.log('wins      ' + NAMES.map((nm, f) => `${nm} ${wins[f]} (${Math.round(wins[f] / R.length * 100)}%)`).join(' · '));
 console.log(`length    median ${q.p50.toFixed(1)} min · p10 ${q.p10.toFixed(1)} · p90 ${q.p90.toFixed(1)} · longest ${q.max.toFixed(1)} · unfinished ${R.filter((r) => !r.over).length}`);
 console.log(`powers wiped out: ${R.reduce((s, r) => s + r.alive.filter((a) => !a).length, 0)}`);

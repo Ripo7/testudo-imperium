@@ -6,10 +6,7 @@ import { canAfford, dist, emptyComp, GS, MAP, menOf, ownerName, provAt, starsOf 
 import { isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { BIOME } from '../map/generate.js';
-import {
-  BASE_SPEED, FACTIONS, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET,
-  OATH_TIME, PACT_TIME, PEACE_TIME, perkOf, PLAYER, PLUNDER, RES, sigOf, TYPES5, U, unitCost, UNITS, wallCost,
-} from '../game/data.js';
+import { BASE_SPEED, FACTIONS, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, PLUNDER, pName, RES, sigOf, TYPES5, U, unitCost, UNITS, wallCost } from '../game/data.js';
 import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideMen } from '../game/battles.js';
 import { armyPay, buildImp, cityYield, fortify, landShare, marketOf, plunderer, recruit, trade } from '../game/economy.js';
 import { costHtml, costMini, fcss, fmt, fmtInt, IC, icOf } from './format.js';
@@ -63,20 +60,20 @@ export function dipPanel(g) {
   const G = GS.factions[g], P = GS.factions[PLAYER], R = relOf(PLAYER, g);
   const men = (f) => GS.armies.reduce((m, a) => m + (!a.dead && a.owner === f ? menOf(a.comp) : 0), 0);
   const war = atWar(PLAYER, g), lockL = R.lock - GS.time;
-  const status = !G.alive ? 'Wiped out' : war ? `At war with Rome for ${clockStr(GS.time - R.since)}` : lockL > 0 ? (R.lock === PEACE_TIME ? 'Opening truce' : 'Peace treaty') : 'At peace, no treaty';
+  const status = !G.alive ? 'Wiped out' : war ? `At war with ${pName()} for ${clockStr(GS.time - R.since)}` : lockL > 0 ? (R.lock === PEACE_TIME ? 'Opening truce' : 'Peace treaty') : 'At peace, no treaty';
   let h = headerHtml(G.css, G.name, status) + '<div class="pb">';
   h += `<div class="kv"><span class="chip">${IC.men}men <b>${fmtInt(men(g))}</b> vs ${fmtInt(men(PLAYER))}</span><span class="chip">points <b>${G.pts}</b> vs ${P.pts}</span></div>`;
   const others = GS.factions.filter((X) => X.alive && X.id !== g && X.id !== PLAYER && atWar(g, X.id)).map((X) => X.name);
   h += `<div class="note">${others.length ? `Also at war with <b>${others.join('</b> and <b>')}</b>.` : 'At peace with the other powers.'}</div>`;
   if (!G.alive) return h + '</div>';
   if (war) {
-    h += `<div class="kv"><span class="chip">they are <b>${wearyWord(R.w[g] || 0)}</b></span><span class="chip">Rome is <b>${wearyWord(R.w[PLAYER] || 0)}</b></span><span class="chip">war score <b>${Math.round(R.sc[PLAYER] || 0)}</b> : ${Math.round(R.sc[g] || 0)}</span></div>`;
+    h += `<div class="kv"><span class="chip">they are <b>${wearyWord(R.w[g] || 0)}</b></span><span class="chip">${pName()} is <b>${wearyWord(R.w[PLAYER] || 0)}</b></span><span class="chip">war score <b>${Math.round(R.sc[PLAYER] || 0)}</b> : ${Math.round(R.sc[g] || 0)}</span></div>`;
     const a = peaceAnswer(g);
     const lbl = a.ok ? (a.gold ? `🕊 Pay ${a.gold} gold for peace` : '🕊 Make peace') : '🕊 Offer peace';
     h += `<button class="abtn${a.ok && a.gold <= P.res.gold ? ' primary' : ' off'}" data-act="peace:${g}" style="justify-content:center">${lbl}</button>`;
     if (!a.ok) h += `<div class="note">${a.why}</div>`;
   } else {
-    if (lockL > 0) h += `<div class="note">The ${R.lock === PEACE_TIME ? 'truce' : 'treaty'} binds for <b>${clockStr(lockL)}</b>. Declaring war before then makes Rome an oath-breaker: no power will deal with you for ${mins(OATH_TIME)} minutes.</div>`;
+    if (lockL > 0) h += `<div class="note">The ${R.lock === PEACE_TIME ? 'truce' : 'treaty'} binds for <b>${clockStr(lockL)}</b>. Declaring war before then makes ${pName()} an oath-breaker: no power will deal with you for ${mins(OATH_TIME)} minutes.</div>`;
     const t = treatyAnswer(g);
     h += `<div class="row2"><button class="abtn${t.ok ? '' : ' off'}" data-act="treaty:${g}" style="justify-content:center">🤝 Renew treaty +${mins(PACT_TIME)} min</button><button class="abtn danger" data-act="war:${g}" style="justify-content:center">⚔ Declare war</button></div>`;
     if (!t.ok) h += `<div class="note">${t.why}</div>`;
@@ -158,7 +155,7 @@ export function cityPanel(c) {
     const arms = myOrderables();
     if (!known) h += `<div class="note">Out of sight: its militia and garrison are unknown. March closer, or send cavalry to scout.</div>`;
     else if (arms.length) {
-      const o = estimateOdds(arms, { kind: 'city', ref: c });
+      const o = estimateOdds(arms, { kind: 'city', ref: c }, 0, ME);
       h += oddsHtml(o, 'If your selected army attacks');
     } else h += `<div class="note">Select one of your armies, then ${isTouch ? 'tap' : 'right-click'} this city to see your odds and attack it.</div>`;
     if (c.imps.length) h += '<div class="sect">Improvements (the last one is looted if you take it)</div><div class="kv">' + c.imps.map((id) => `<span class="chip" title="${IMPS[id].desc}">${IMPS[id].ico} ${IMPS[id].name}</span>`).join('') + '</div>';
@@ -190,7 +187,7 @@ export function myArmyPanel(list) {
   const men = menOf(comp);
   const a0 = list[0];
   const stars = list.length === 1 ? starsOf(a0) : 0;
-  const title = list.length > 1 ? `${list.length} Roman armies` : 'Roman army';
+  const title = list.length > 1 ? `${list.length} ${pAdj()} armies` : `${pAdj()} army`;
   const p = provAt(a0.x, a0.y), home = p >= 0 && MAP.provinces[p].owner === ME, forage = p >= 0 && atWar(ME, MAP.provinces[p].owner);
   let upk = 0; for (const a of list) { for (const t of ['spear', 'leg', 'arch', 'cav']) upk += a.comp[t] / 100 * U(t, a.owner).upk * (perkOf(a.owner).feed || 1); upk += a.comp.siege * UNITS.siege.upk; }
   let h = headerHtml(fcss(ME), `${title} · ${fmtInt(men)}${stars ? ' <span style="color:var(--gold);font-size:15px">' + '★'.repeat(stars) + '</span>' : ''}`, list.length === 1 ? armyStatus(a0) : 'Several armies selected') + '<div class="pb">';
@@ -199,8 +196,9 @@ export function myArmyPanel(list) {
   h += `<div class="kv"><span class="chip">${IC.food}eats <b>${(upk * (home || forage ? 1 : 1.35)).toFixed(1)}</b>/s${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${pay.toFixed(1)}</b>/s</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
   if (list.length === 1) { const g = groundInfo(a0.x, a0.y); h += `<div class="kv"><span class="chip">${g.name} · <b>${g.pace}</b></span></div>`; }
   const allDef = list.every((a) => a.stance === 'def'), allAgg = list.every((a) => a.stance === 'aggr');
-  h += `<div class="sect">Stance</div><div class="seg"><button class="${allAgg ? 'on' : ''}" data-act="stance:aggr">⚔ Aggressive</button><button class="${allDef ? 'on' : ''}" data-act="stance:def">🛡 Testudo</button></div>`;
-  h += `<div class="note">${allDef ? 'Testudo: <b>+22% defense</b>, legionaries take far less from arrows, slower march.' : 'Aggressive: <b>+12% attack</b>, weaker defense.'}</div>`;
+  const defName = sigOf(ME).testudo ? 'Testudo' : 'Shield wall';
+  h += `<div class="sect">Stance</div><div class="seg"><button class="${allAgg ? 'on' : ''}" data-act="stance:aggr">⚔ Aggressive</button><button class="${allDef ? 'on' : ''}" data-act="stance:def">🛡 ${defName}</button></div>`;
+  h += `<div class="note">${allDef ? (sigOf(ME).testudo ? 'Testudo: <b>+22% defense</b>, legionaries take far less from arrows, slower march.' : 'Shield wall: <b>+22% defense</b>, slower march.') : 'Aggressive: <b>+12% attack</b>, weaker defense.'}</div>`;
   const busy = list.some((a) => a.state === 'battle' || a.state === 'rout');
   h += '<div class="row2">';
   if (list.length === 1) h += `<button class="abtn${busy || men < 100 ? ' off' : ''}" data-act="split" style="justify-content:center">Split</button>`;
@@ -230,7 +228,7 @@ export function enemyArmyPanel(a) {
     return h + '</div>';
   }
   const arms = myOrderables();
-  if (arms.length) h += oddsHtml(estimateOdds(arms, { kind: 'army', ref: a }), 'If your selected army attacks');
+  if (arms.length) h += oddsHtml(estimateOdds(arms, { kind: 'army', ref: a }, 0, ME), 'If your selected army attacks');
   else h += `<div class="note">Select your army first to see the odds against this one.</div>`;
   return h + '</div>';
 }
@@ -239,7 +237,7 @@ export function fortPanel(f) {
   if (f.built < 1) h += `<div class="prog"><i style="width:${Math.round(f.built * 100)}%"></i></div>`;
   h += `<div class="kv"><span class="chip">${IC.men}garrison <b>${fmtInt(f.militia)}</b>/${FORT_MAX}</span><span class="chip">${IC.walls}walls <b>${wallsDots(FORT_WALLS)}</b></span></div>`;
   const arms = myOrderables();
-  if (f.owner !== ME && arms.length) h += oddsHtml(estimateOdds(arms, { kind: 'fort', ref: f }), 'If your selected army attacks');
+  if (f.owner !== ME && arms.length) h += oddsHtml(estimateOdds(arms, { kind: 'fort', ref: f }, 0, ME), 'If your selected army attacks');
   return h + '</div>';
 }
 export function provPanel(P) {

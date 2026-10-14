@@ -2,10 +2,7 @@ import { SET_W } from './standing.js';
 import { GS, MAP, menOf, ownerName } from './state.js';
 import { $ } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
-import {
-  FACTIONS, GANG_AT, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PEACE_WILL, PLAYER, REVOLT_RATE,
-  TREATY_TIME, TRIBUTE_FLOOR,
-} from './data.js';
+import { FACTIONS, GANG_AT, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PEACE_WILL, PLAYER, pName, REVOLT_RATE, TREATY_TIME, TRIBUTE_FLOOR } from './data.js';
 import { captureCity, powerOf, roundComp } from './battles.js';
 import { fcss } from '../ui/format.js';
 import { ME, UI } from '../ui/state.js';
@@ -73,7 +70,7 @@ export function peaceWill(f, g) {
 }
 export const tributeFor = (will) => Math.min(600, Math.max(50, Math.round((PEACE_WILL - will) * 1200 / 25) * 25));
 export const wearyWord = (w) => (w < 0.25 ? 'fresh' : w < 0.5 ? 'tiring' : w < 0.8 ? 'war-weary' : 'exhausted');
-// Rome offers peace to g: { ok, gold (Rome pays), why }
+// the player offers peace to g: { ok, gold (the player pays), why }
 export function peaceAnswer(g) {
   const P = GS.factions[PLAYER], G = GS.factions[g], R = relOf(PLAYER, g);
   if ((R.nd[g] || 0) > GS.time) return { ok: false, why: `${G.name} will not receive your envoys again so soon.` };
@@ -82,7 +79,7 @@ export function peaceAnswer(g) {
   const w = peaceWill(g, PLAYER);
   if (w > PEACE_WILL) return { ok: true, gold: 0, why: `${G.name} is ready for peace.` };
   if (w > TRIBUTE_FLOOR) return { ok: true, gold: tributeFor(w), why: `${G.name} will make peace for a tribute.` };
-  return { ok: false, why: GS.time - R.since < 150 ? `The war has only begun: ${G.name} wants to fight it out first.` : P.share > GANG_AT && G.share < P.share ? `${G.name} sees Rome as the threat that must be stopped.` : `${G.name} thinks it is winning and refuses.` };
+  return { ok: false, why: GS.time - R.since < 150 ? `The war has only begun: ${G.name} wants to fight it out first.` : P.share > GANG_AT && G.share < P.share ? `${G.name} sees ${pName()} as the threat that must be stopped.` : `${G.name} thinks it is winning and refuses.` };
 }
 export function suePeace(g) {
   const a = peaceAnswer(g), P = GS.factions[PLAYER];
@@ -92,12 +89,12 @@ export function suePeace(g) {
   UI.dipMsg = `Peace with ${FACTIONS[g].name}${a.gold ? ` for ${a.gold} gold` : ''}. The treaty binds both sides for ${mins(TREATY_TIME)} minutes.`;
   return true;
 }
-// at peace: will g renew the treaty with Rome?
+// at peace: will g renew the treaty with the player?
 export function treatyAnswer(g) {
   const P = GS.factions[PLAYER], G = GS.factions[g], R = relOf(PLAYER, g);
   if ((R.nd[g] || 0) > GS.time) return { ok: false, why: `${G.name} will not receive your envoys again so soon.` };
   if (P.oath > GS.time) return { ok: false, why: `${G.name} does not trust an oath-breaker.` };
-  if (P.share > GANG_AT && G.share < P.share) return { ok: false, why: `${G.name} sees Rome as the threat that must be stopped.` };
+  if (P.share > GANG_AT && G.share < P.share) return { ok: false, why: `${G.name} sees ${pName()} as the threat that must be stopped.` };
   const r = (armyPower(g) + 50) / (armyPower(PLAYER) + 50);
   if (warsOf(g) === 0 && r > 1.9 - 0.6 * G.aggr) return { ok: false, why: `${G.name} has its eye on your lands and refuses.` };
   return { ok: true, why: `${G.name} agrees.` };
@@ -158,7 +155,7 @@ export function dipTick() {
     else if (wf > PEACE_WILL && wg > TRIBUTE_FLOOR && ai[i].res.gold >= tributeFor(wg) * 0.6) makePeace(f, g, TREATY_TIME, f, tributeFor(wg));
     else if (wg > PEACE_WILL && wf > TRIBUTE_FLOOR && ai[j].res.gold >= tributeFor(wf) * 0.6) makePeace(f, g, TREATY_TIME, g, tributeFor(wf));
   }
-  // AI envoys come to Rome
+  // AI envoys come to the player
   if (!GS.auto && !UI.envoy && GS.factions[PLAYER].alive && UI.mode === 'play') {
     for (const G of ai) {
       const R = relOf(PLAYER, G.id);
@@ -184,7 +181,7 @@ export function revolts() {
 export function showEnvoy(g, gold) {
   UI.envoy = { g, gold, until: GS.time + 40 };
   const G = GS.factions[g];
-  $('envoy').innerHTML = `<i style="background:${G.css}"></i><span><b>${G.name}</b> sends envoys: peace${gold ? `, and <b>${gold} gold</b> for Rome` : ''}. The treaty would bind for ${mins(TREATY_TIME)} minutes.</span><button class="abtn primary" data-env="yes">Accept</button><button class="abtn" data-env="no">Refuse</button>`;
+  $('envoy').innerHTML = `<i style="background:${G.css}"></i><span><b>${G.name}</b> sends envoys: peace${gold ? `, and <b>${gold} gold</b> for ${pName()}` : ''}. The treaty would bind for ${mins(TREATY_TIME)} minutes.</span><button class="abtn primary" data-env="yes">Accept</button><button class="abtn" data-env="no">Refuse</button>`;
   $('envoy').classList.remove('hidden');
   log(`Envoys from ${fname(g)} ask for peace.`, 'info');
   Sfx.horn();

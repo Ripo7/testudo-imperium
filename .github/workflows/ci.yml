@@ -18,4 +18,4 @@ jobs:
       - run: npm ci
       - name: Install Chromium for the browser tests
         run: npx playwright install --with-deps chromium
-      - run: npm test
+      - run: npm test   # lint, build, browser tests

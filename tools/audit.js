@@ -1,14 +1,15 @@
 // Mechanics audit: builds an instrumented copy of the game, runs AI-vs-AI wars, and counts how often
 // every mechanic is actually used (recruits by type, walls, forts, market, improvements, retreats,
 // wars and peace treaties, revolts...). Use it after a balance change to spot dead or dominant mechanics.
-//   npm run audit -- [wars=12] [workers=3]
-import fs from 'node:fs';
+//   npm run audit -- [wars=12] [workers=3] [--nofog]
 import path from 'node:path';
 import { build } from 'vite';
 import { serve, ROOT } from '../tests/helpers.js';
 import { runWars, quantiles, NAMES } from './wars.js';
 
-const N = +process.argv[2] || 12, WORKERS = +process.argv[3] || 3;
+const FOG = !process.argv.includes('--nofog');
+const ARGS = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const N = +ARGS[0] || 12, WORKERS = +ARGS[1] || 3;
 const A = (...k) => ` window.__aud && window.__aud(${k.join(', ')});`;
 // [code to find, code to add right after it]
 const PROBES = [
@@ -52,6 +53,7 @@ const WAR = `async (seed) => {
   const T = window.__T; T.setNoRender(true);
   const c = {}; window.__aud = (...k) => { const key = k.join(':'); c[key] = (c[key] || 0) + 1; }; window.__audWars = {}; window.__audDur = [];
   T.prepareCampaign(seed); T.setAuto(true); T.GS.speed = 0;
+  T.GS.fog = ${FOG}; T.GS.sightT = 0;   // the fog of war is on by default; --nofog for wars with full information
   const S = { samples: 0, starving: 0, unpaid: 0, stretched: 0, powers: 0, lowLoyal: 0, cities: 0, withImps: 0, walls: 0, secure: 0, provs: 0, wars: 0 };
   let k = 0;
   while (!T.GS.over && T.GS.time < 3600) {

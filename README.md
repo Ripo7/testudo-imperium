@@ -1,16 +1,16 @@
 # Testudo Imperium
 
-Real-time strategy in the browser. Rome, Carthage, the Gauls and Egypt fight over a procedurally generated continent: raise armies, wall your cities, plunder enemy provinces, and make peace when the war turns against you.
+Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a procedurally generated continent: raise armies, wall your cities, plunder enemy provinces, and make peace when the war turns against you.
 
 ![A campaign in progress](docs/screenshot-campaign.jpg)
 
 - **Four powers, each with its own elite unit and speciality**: Roman legionaries and engineering, Punic war elephants and merchants, Gallic gaesatae and tribal levies, Egyptian chariots and the gift of the Nile.
 - **Terrain matters on the march**: armies go twice as fast on roads, slowly through forests and very slowly over mountains, and wide rivers can only be crossed on a bridge (narrow streams can be waded).
-- **Fog of war**: enemy armies are hidden outside the sight of your cities, armies and forts; cavalry and high ground see further.
+- **Fog of war, for everyone**: each power, the AI included, only sees the land around its cities, armies and forts; cavalry and high ground see further. The AI judges unseen cities by its last report.
 - **Battles decided by strategy**: terrain, rivers, walls, flanks, stance and the odds you accept. Retreat when a battle turns.
 - **An economy of land and cities**: provinces share their land income between settlements, cities take improvements (farmlands, forum, barracks, temple), soldiers draw pay, and conquered cities can revolt.
 - **War and peace**: powers stay at peace until one declares war. Wars wear both sides down until they sign a treaty, with tribute paid by the loser.
-- **Autoplay** mode to watch four AI empires fight it out, three difficulty levels, and saves that survive closing the tab.
+- **Autoplay** to watch four AI empires fight it out through the eyes of the power you follow, and take command of it at any moment. Three difficulty levels, and saves that survive closing the tab.
 
 Everything is procedural and drawn in code: the map, the painted terrain, the trees, cities, soldiers and the synthesized sound.
 
@@ -30,7 +30,8 @@ Then open the address Vite prints (usually http://localhost:5173). Edits to the 
 | `npm run dev` | Development server with live reload |
 | `npm run build` | Production build into `dist/` |
 | `npm run preview` | Serve the production build locally |
-| `npm test` | Build, then run the test suite in headless Chromium |
+| `npm run lint` | Check the code for mistakes (undefined or unused names) |
+| `npm test` | Lint, build, then run the test suite in headless Chromium |
 | `npm run balance -- 40` | Play 40 AI-vs-AI wars and report win rates, war length and economy |
 | `npm run audit -- 12` | Count how often every mechanic is used across 12 AI wars |
 
@@ -68,7 +69,8 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 `npm test` builds the game and runs:
 
 - **map**: map generation is deterministic and every province has its cities (plain Node).
-- **smoke**: a campaign plays on desktop and phone sizes, every panel renders, no console errors.
+- **smoke**: a campaign plays on desktop and phone sizes, every panel renders, the fog hides what it should, no console errors.
+- **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
 - **determinism**: the same seed and the same random numbers give exactly the same game.
 - **save & resume**: play, close the tab, reopen, and check the restored game matches the save exactly.
 
@@ -95,7 +97,6 @@ The game is a static site, so any static host works too (Netlify, Cloudflare Pag
 
 - Sound effects draw from `Math.random`, the same generator the AI uses, so a game only replays identically with sound off (the determinism test mutes it). Giving the simulation its own seeded generator would fix that and allow replays.
 - The AI almost never attacks from two sides, so flanking is mostly a player tactic.
-- The AI isn't limited by the fog of war: it sees the whole map.
 
 ## Credits and licence
 

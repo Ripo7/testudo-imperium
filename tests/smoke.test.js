@@ -23,7 +23,7 @@ export default async function smoke() {
         for (const B of T.GS.battles) { T.battlePanel(B); panels++; }
         T.updateHUD(); T.renderPanel(true);
         // fog of war (on by default when playing Rome): some enemies hidden, unseen cities' defenders unknown
-        T.updateSight();
+        T.updateSight(); T.SIGHT.on = T.fogShown();
         const enemies = T.GS.armies.filter((a) => !a.dead && a.owner !== 0), hidden = enemies.filter((a) => !T.seesArmy(a)).length;
         const unseen = T.MAP.cities.find((c) => c.owner !== 0 && !T.seesCity(c));
         const fog = { on: T.SIGHT.on, enemies: enemies.length, hidden, unknownCity: !!unseen && T.cityPanel(unseen).includes('Out of sight') };

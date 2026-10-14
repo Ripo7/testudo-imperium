@@ -1,4 +1,4 @@
-import { fogActive, seesBattle, SIGHT, updateSight } from './game/sight.js';
+import { fogShown, seesBattle, SIGHT } from './game/sight.js';
 import { initAtmosphere, updateFogTexture } from './render/atmosphere.js';
 import { GS } from './game/state.js';
 import { Sfx } from './core/audio.js';
@@ -61,11 +61,11 @@ function frame(now) {
   UI.t += rdt * (GS.speed > 0 || UI.mode !== 'play' ? 1 : 0.15);
   updateCrowds(UI.t);
   updateDust(rdt);
-  if (UI.mode !== 'play' || !fogActive() !== !SIGHT.on) { updateSight(); updateFogTexture(); }
+  SIGHT.on = fogShown(); updateFogTexture();
   if (UI.mode === 'play') {
     updateSelectionVisuals();
     UI.hudT -= rdt;
-    if (UI.hudT <= 0) { UI.hudT = 0.25; updateSight(); updateFogTexture(); updateHUD(); renderPanel(false); updateLog(); defaultHint(); }
+    if (UI.hudT <= 0) { UI.hudT = 0.25; updateHUD(); renderPanel(false); updateLog(); defaultHint(); }
     saveT -= rdt;
     if (saveT <= 0) { saveT = 15; saveGame(); }
     battleSoundT -= rdt;

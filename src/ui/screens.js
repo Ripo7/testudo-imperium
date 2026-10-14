@@ -1,3 +1,4 @@
+import { updateSight } from '../game/sight.js';
 import { STAND } from '../game/standing.js';
 import { GS, MAP } from '../game/state.js';
 import { $, isTouch, store } from '../core/util.js';
@@ -7,7 +8,7 @@ import { CAM } from '../render/camera.js';
 import { VIEW } from '../render/terrain.js';
 import { buildFortMesh } from '../render/cities.js';
 import { crowd, CROWD_TYPES } from '../render/crowds.js';
-import { DIFFS, FACTIONS, PLAYER, SIG } from '../game/data.js';
+import { DIFFS, FACTIONS, othersOf, PLAYER, pName, setPlayer, SIG, VOICE } from '../game/data.js';
 import { initCampaign } from '../game/campaign.js';
 import { resetPathfinder } from '../game/armies.js';
 import { $log, $panel, $tip, clearSel, hidePopup, setME, SPECT, stopPlacing, UI } from './state.js';
@@ -57,7 +58,11 @@ export function startCampaign(auto) {
   UI.mode = 'play'; UI.fresh = false;
   GS.speed = auto ? 2 : 1; UI.lastSpeed = GS.speed;
   GS.diff = auto ? 1 : (UI.diff == null ? 1 : UI.diff);
-  GS.fog = !auto && UI.fog !== false;
+  GS.fog = UI.fog !== false;   // the AI plays under the fog too; in autoplay you watch through one power's eyes
+  if (!auto) setPlayer(UI.pick || 0);
+  for (const F of GS.factions) F.isPlayer = false;
+  if (GS.time < 1) for (const a of GS.armies) a.stance = !auto && a.owner === PLAYER ? 'aggr' : 'def';
+  GS.sightT = 0; updateSight();
   $('hud').classList.remove('hidden');
   showScreen(null);
   setAuto(auto);
@@ -65,12 +70,12 @@ export function startCampaign(auto) {
   if (auto) {
     CAM.tx = 0; CAM.tz = 6; CAM.td = 150;
     DIR.tgt = { kind: 'spot', x: (MAP.W - 1) / 2, y: (MAP.H - 1) / 2 + 6, d: 150 }; DIR.hold = 7;
-    setTimeout(() => log('<b>Autoplay.</b> The AI commands Rome, Carthage, the Gauls and Egypt. The first to hold half of the victory points wins.', 'info'), 600);
-    setTimeout(() => log(isTouch ? 'Tap a power in the standings to see its treasury. Drag to take the camera.' : 'Click a power in the standings to see its treasury · drag to take the camera, press F to give it back.', 'info'), 1700);
+    setTimeout(() => log(`<b>Autoplay.</b> The AI commands all four powers. The first to hold half of the victory points wins.${GS.fog ? ' You watch through the eyes of the power picked in the standings.' : ''}`, 'info'), 600);
+    setTimeout(() => log(isTouch ? 'Tap a power in the standings to follow it. Drag to take the camera.' : 'Click a power in the standings to follow it · drag to take the camera, press F to give it back.', 'info'), 1700);
   } else {
     focusOn(cap0); CAM.td = 48;
     UI.sel = GS.armies.filter((a) => a.owner === PLAYER);
-    setTimeout(() => log(`Rome holds <b>${MAP.provinces.filter((p) => p.owner === PLAYER).map((p) => p.name).join('</b> and <b>')}</b>. Carthage, the Gauls and Egypt want the rest.`, 'info', cap0), 600);
+    setTimeout(() => log(`${pName()} holds <b>${MAP.provinces.filter((p) => p.owner === PLAYER).map((p) => p.name).join('</b> and <b>')}</b>. ${othersOf(PLAYER)} want the rest.`, 'info', cap0), 600);
     setTimeout(() => log(isTouch ? 'Your army is selected: tap a neutral city nearby to see your odds and attack.' : 'Your army is selected: right-click a neutral city nearby to attack it. Hover first to see the odds.', 'info'), 1600);
   }
   updateHUD(); renderPanel(true);
@@ -86,13 +91,15 @@ export function openMenu() {
   if (UI.mode !== 'play') return;
   UI.menuSpeed = GS.speed; GS.speed = 0;
   saveGame();
-  const romeAlive = GS.factions[PLAYER].alive && MAP.cities.some((c) => c.major && c.owner === PLAYER);
+  // in autoplay you can take command of the power you are following
+  const who = GS.auto ? UI.viewF : PLAYER, W = FACTIONS[who];
+  const canLead = GS.factions[who].alive && MAP.cities.some((c) => c.major && c.owner === who);
   const t = $('autoToggle');
-  t.textContent = GS.auto ? (romeAlive ? 'Take command of Rome' : 'Rome has no city left to command') : 'Hand Rome over to the AI (autoplay)';
+  t.textContent = GS.auto ? (canLead ? `Take command of ${W.name}` : `${W.name} has no city left to command`) : `Hand ${W.name} over to the AI (autoplay)`;
   t.classList.toggle('hidden', !!GS.over);
-  t.disabled = GS.auto && !romeAlive; t.style.opacity = t.disabled ? 0.4 : '';
+  t.disabled = GS.auto && !canLead; t.style.opacity = t.disabled ? 0.4 : '';
   $('newBtn').textContent = GS.auto ? 'Start a new autoplay war' : 'Start a new campaign';
-  $('menu').querySelector('.tag').textContent = GS.auto ? 'The four powers hold their breath.' : 'The Senate awaits your orders.';
+  $('menu').querySelector('.tag').textContent = GS.auto ? 'The four powers hold their breath.' : VOICE[PLAYER].court;
   showScreen('menu');
 }
 export function closeMenu() { showScreen(null); if (!GS.over) GS.speed = UI.menuSpeed || 1; }
@@ -100,7 +107,7 @@ export function showOver() {
   if (!GS.over || (GS.auto && !GS.factions[GS.winner])) return;   // a new campaign started meanwhile
   const s0 = Math.floor(GS.time), tstr = Math.floor(s0 / 60) + ':' + String(s0 % 60).padStart(2, '0');
   $('againBtn').textContent = GS.auto ? 'Watch another war' : 'New campaign';
-  $('otherBtn').textContent = GS.auto ? 'Play as Rome instead' : 'Watch an autoplay war instead';
+  $('otherBtn').textContent = GS.auto ? `Play as ${FACTIONS[UI.pick || 0].name} instead` : 'Watch an autoplay war instead';
   if (GS.auto) {
     const W = GS.factions[GS.winner];
     const t = $('resTitle');
@@ -119,9 +126,9 @@ export function showOver() {
   $('resTitle').style.color = '';
   const win = GS.over === 'win';
   const t = $('resTitle');
-  t.textContent = win ? 'Victory' : 'Rome has fallen';
+  t.textContent = win ? 'Victory' : `${pName()} has fallen`;
   t.className = 'res-title ' + (win ? 'win' : 'lose');
-  $('resTag').textContent = win ? 'The continent kneels before the Senate and People of Rome.' : GS.rival ? `${GS.rival} now rules the continent. Another consul will try again.` : 'The eagles are lost. Another consul will try again.';
+  $('resTag').textContent = win ? VOICE[PLAYER].win : GS.rival ? `${GS.rival} now rules the continent. Another ${VOICE[PLAYER].leader} will try again.` : `${VOICE[PLAYER].lost} Another ${VOICE[PLAYER].leader} will try again.`;
   $('stProv').textContent = MAP.provinces.filter((p) => p.owner === PLAYER).length;
   $('stWon').textContent = GS.stats.won;
   $('stCap').textContent = GS.stats.captured;
@@ -134,16 +141,22 @@ export function setMuteIcon() {
     ? '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
     : '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>';
 }
+// the four powers on the title screen: pick the one you will play
+export function drawPowers() {
+  $('powers').innerHTML = FACTIONS.map((F, i) => `<button class="power${i === (UI.pick || 0) ? ' on' : ''}" data-pick="${i}" style="--fc:${F.css}" title="${F.perk.name}: ${F.perk.desc} ${SIG[i].desc}"><i></i>${F.name}<small>${SIG[i].name}<br>${F.perk.name}</small></button>`).join('');
+}
 export function drawDiff() {
   $('diffSel').innerHTML = DIFFS.map((d, i) => `<button data-d="${i}" class="${i === UI.diff ? 'on' : ''}" title="${d.note}">${d.name}</button>`).join('')
     + `<button data-fog class="fog${UI.fog ? ' on' : ''}" title="Enemy armies are hidden outside the sight of your cities, armies and forts">Fog of war: ${UI.fog ? 'on' : 'off'}</button>`
-    + `<div class="dn">Difficulty when you play Rome: ${DIFFS[UI.diff].note}${UI.fog ? ' Enemy armies are hidden outside your sight.' : ''}</div>`;
+    + `<div class="dn">Difficulty when you play: ${DIFFS[UI.diff].note}${UI.fog ? ' Every power, the AI included, only sees what its cities, armies and forts can see.' : ''}</div>`;
 }
 // Start-up wiring, run once from main.js after every module has loaded.
 export function initScreens() {
   setMuteIcon();
   $('eliteHelp').innerHTML = FACTIONS.map((F, i) => `<li><b>${F.name}</b> · ${F.perk.name}: ${F.perk.desc} Elite unit, <b>${SIG[i].name}</b>: ${SIG[i].desc.replace(/^\w+ only\. /, '')}</li>`).join('');
-  $('powers').innerHTML = FACTIONS.map((F, i) => `<div class="power" style="--fc:${F.css}" title="${F.perk.name}: ${F.perk.desc} ${SIG[i].desc}"><i></i>${F.name}<small>${SIG[i].name}<br>${F.perk.name}</small></div>`).join('');
+  UI.pick = store.get('testudo.faction', 0);
+  drawPowers();
+  $('powers').addEventListener('click', (e) => { const b = e.target.closest('[data-pick]'); if (!b) return; UI.pick = +b.dataset.pick; store.set('testudo.faction', UI.pick); Sfx.click(); drawPowers(); showTitle(); });
   UI.diff = store.get('testudo.diff', 1);
   UI.fog = store.get('testudo.fog', true);
   $('diffSel').addEventListener('click', (e) => {
@@ -159,8 +172,9 @@ export function initScreens() {
     if ($('autoToggle').disabled) return;
     Sfx.click();
     const on = !GS.auto;
+    if (!on) setPlayer(UI.viewF);   // take command of the power being followed
     setAuto(on);
-    log(on ? '<b>Autoplay on.</b> The AI now commands Rome as well.' : '<b>You command Rome again.</b>', 'info');
+    log(on ? `<b>Autoplay on.</b> The AI now commands ${pName()} as well.` : `<b>You command ${pName()}.</b>`, 'info');
     closeMenu();
   });
   $('resumeBtn').addEventListener('click', () => { Sfx.click(); closeMenu(); });

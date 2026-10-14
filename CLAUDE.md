@@ -5,8 +5,9 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 ## Commands
 
 - `npm run dev`: dev server. `npm run build`: production build into `dist/`.
-- `npm test`: builds, then runs `tests/run.js` (map, smoke, determinism, save & resume) in headless Chromium. Run one suite with `node tests/run.js smoke` after a build.
-- `npm run balance -- 60`: AI-vs-AI wars. Targets: each power wins 20–30%, median war 15–20 min, no war hits the 60-minute limit.
+- `npm run lint`: ESLint for mistakes only (undefined or unused names); a missing import is a runtime error that the build doesn't catch.
+- `npm test`: lints, builds, then runs `tests/run.js` (map, smoke, powers, determinism, save & resume) in headless Chromium. Run one suite with `node tests/run.js smoke` after a build.
+- `npm run balance -- 60`: AI-vs-AI wars, with the fog of war on (add `--nofog` for full information). Targets: each power wins 20–30%, median war 15–20 min, no war hits the 60-minute limit.
 - `npm run audit -- 12`: usage count of every mechanic. If a change makes a mechanic unused or dominant, the audit shows it. Its probes in `tools/audit.js` match code text; update them when you rename that code.
 
 ## Module rules
@@ -17,7 +18,8 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 - The simulation (`src/game/`) must not depend on rendering. Tests run it with `setNoRender(true)` and call `simStep(0.1)` directly.
 - `?test` loads `src/debug.js`, which exposes every export of every module (picked up automatically) as `window.__T`.
 - Two terrain costs: `MAP.cost` is the builders' cost, used to lay out provinces and roads; changing it changes every map, and so breaks existing saves. `MAP.move` is the marching cost used by armies and pathfinding, and it can be tuned freely (`TERRAIN_MOVE` and `MOVE` in `map/generate.js`).
-- Fog of war lives in `game/sight.js`. Rendering, labels, hit-testing and panels hide what `seesArmy`, `seesBattle` and `seesCity` say Rome can't see. The AI ignores the fog.
+- Any power can be played: `PLAYER` (in `game/data.js`, set with `setPlayer`) is the human's power and `ME` is `PLAYER`, or `SPECT` in autoplay. Never hard-code Rome in texts: use `pName()`, `pAdj()` and `VOICE[PLAYER]`.
+- Fog of war lives in `game/sight.js`. Every power has a sight grid, updated inside `simStep`. The AI only uses what it sees (`knowsArmy`, `cityEstimate`, `estimateOdds(..., view)`). On screen, `seesArmy`, `seesBattle` and `seesCity` follow `viewer()`: the player's power, or the followed power in autoplay.
 
 ## Behaviour to preserve
 

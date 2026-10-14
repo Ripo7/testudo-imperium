@@ -8,6 +8,7 @@ const RUN = `([seed, steps]) => {
   for (const k of Object.keys(T.Sfx)) if (typeof T.Sfx[k] === 'function') T.Sfx[k] = () => {};
   (${SEED_RANDOM})(seed);
   T.prepareCampaign(seed); T.setAuto(true); T.GS.speed = 0;
+  T.GS.fog = true; T.GS.sightT = 0;   // every power under the fog: the sight grids are part of the simulation
   for (let i = 0; i < steps; i++) T.simStep(0.1);
   const s = JSON.parse(JSON.stringify(T.serializeGame())); delete s.at;
   return JSON.stringify(s);
@@ -24,6 +25,6 @@ export default async function determinism() {
       if (errors.length) console.log('  page errors:', errors.slice(0, 3));
       await ctx.close();
     }
-    check(out[0] === out[1], `same seed, same game after 5 minutes of autoplay (${Math.round(out[0].length / 1024)} KB of state compared)`);
+    check(out[0] === out[1], `same seed, same game after 5 minutes of autoplay under the fog (${Math.round(out[0].length / 1024)} KB of state compared)`);
   } finally { await browser.close(); site.close(); }
 }
