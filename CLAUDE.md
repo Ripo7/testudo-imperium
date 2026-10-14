@@ -19,10 +19,12 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 - `?test` loads `src/debug.js`, which exposes every export of every module (picked up automatically) as `window.__T`.
 - Two terrain costs: `MAP.cost` is the builders' cost, used to lay out provinces and roads; changing it changes every map, and so breaks existing saves. `MAP.move` is the marching cost used by armies and pathfinding, and it can be tuned freely (`TERRAIN_MOVE` and `MOVE` in `map/generate.js`).
 - Any power can be played: `PLAYER` (in `game/data.js`, set with `setPlayer`) is the human's power and `ME` is `PLAYER`, or `SPECT` in autoplay. Never hard-code Rome in texts: use `pName()`, `pAdj()` and `VOICE[PLAYER]`.
+- The record of the war lives in `game/chronicle.js`: events (`GS.chron`), samples of every power's points and men (`GS.hist`) and totals (`GS.fstats`). It is simulation state, so record from the simulation (never from UI hooks) and keep it deterministic. The Overview (`ui/overview.js`) and the end-of-war report (`ui/report.js`) only read it.
 - Fog of war lives in `game/sight.js`. Every power has a sight grid, updated inside `simStep`. The AI only uses what it sees (`knowsArmy`, `cityEstimate`, `estimateOdds(..., view)`). On screen, `seesArmy`, `seesBattle` and `seesCity` follow `viewer()`: the player's power, or the followed power in autoplay.
 
 ## Behaviour to preserve
 
 - Determinism: with a seeded `Math.random` (and sounds muted), the same seed gives the same game. Don't add wall-clock time or unseeded randomness to the simulation.
-- Saves (`src/game/save.js`) must keep loading older saves. Add new fields with defaults on restore rather than breaking the format.
+- Saves (`src/game/save.js`) must keep loading older saves. Add new fields with defaults on restore rather than breaking the format (as `fillStats`, `chron` and `hist` do).
+- Report charts use `FCHART` (in `ui/format.js`), steps of each power's colour checked for colour-blind separation on the dark tablet. Re-check with a palette validator if you change them.
 - After a gameplay change, run `npm test`. For balance changes, also run `npm run balance` and `npm run audit`, and update the help screen in `index.html` when a rule changes.

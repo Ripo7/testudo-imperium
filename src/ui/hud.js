@@ -4,14 +4,17 @@ import { GS, MAP, menOf, ownerName } from '../game/state.js';
 import { $, isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { CAM, projectCell } from '../render/camera.js';
-import { FACTIONS, PEACE_TIME, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
+import { FACTIONS, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
 import { sideMen } from '../game/battles.js';
-import { fcss, fmt, fmtInt, fmtRate, IC } from './format.js';
+import { clock, fcss, fmt, fmtInt, fmtRate, GLYPH, IC } from './format.js';
 import { _pp, $hint, $log, clearSel, ME, UI } from './state.js';
 import { renderPanel } from './panel.js';
 import { showOver } from './screens.js';
 import { clearSave } from '../game/save.js';
-import { battleMen, DIR, setFollow } from './director.js';
+import { battleMen, DIR, manualCam, setFollow } from './director.js';
+import { alertsHtml, computeAlerts, warsList } from './alerts.js';
+import { sampleAgo } from '../game/chronicle.js';
+import { updateTerrainColors } from '../render/terrain.js';
 
 /* =========================================================
    HUD: resources, standings, log
@@ -47,7 +50,7 @@ export function updateHUD() {
   const s = Math.floor(GS.time);
   $('clock').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   document.querySelectorAll('#speed button').forEach((b) => b.classList.toggle('on', +b.dataset.sp === GS.speed));
-  const need = STAND.need;
+  const need = STAND.need, ago = sampleAgo(60);
   let h = `<h4>The powers${GS.auto ? ', all AI' : ''}</h4>`;
   if (GS.auto && GS.fog) h += `<div class="note" style="margin:-2px 0 4px;font-size:11.5px">Seen through the eyes of <b style="color:${FACTIONS[UI.viewF].css}">${FACTIONS[UI.viewF].name}</b> · click a power to switch</div>`;
   let lead = null, leadN = -1;
@@ -56,9 +59,13 @@ export function updateHUD() {
     if (prov > leadN) { leadN = prov; lead = Fx; }
     const men = GS.armies.reduce((m, a) => m + (!a.dead && a.owner === Fx.id ? menOf(a.comp) : 0), 0);
     const view = GS.auto && Fx.id === UI.viewF;
-    h += `<div class="row${Fx.alive ? '' : ' dead'}${view ? ' view' : ''}"${GS.auto || (!Fx.isPlayer && Fx.alive) ? ` data-f="${Fx.id}"` : ''}><i class="sw" style="background:${Fx.css}"></i><span class="nm">${Fx.name}${!GS.auto && Fx.isPlayer ? ' (you)' : ''}${relMark(Fx)}${Fx.alive && Fx.stretch < 0.995 ? ` <small class="over" title="Overstretched: income at ${Math.round(Fx.stretch * 100)}%">−${Math.round((1 - Fx.stretch) * 100)}%</small>` : ''}</span><b title="victory points: major city 3, town 1">${prov}</b><span>${fmt(men)}</span></div>`;
+    const d = ago && Fx.alive ? Fx.pts - ago[1 + Fx.id] : 0;
+    const trend = d ? `<small class="tr ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'Gained' : 'Lost'} ${Math.abs(d)} point${Math.abs(d) > 1 ? 's' : ''} in the last minute">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</small>` : '';
+    const tip = !GS.auto && Fx.isPlayer ? 'Overview of your realm' : GS.auto ? `Follow ${Fx.name}` : `Talk to ${Fx.name}`;
+    h += `<div class="row${Fx.alive ? '' : ' dead'}${view ? ' view' : ''}"${GS.auto || Fx.alive ? ` data-f="${Fx.id}" title="${tip}"` : ''}><i class="sw" style="background:${Fx.css}"></i><span class="nm">${Fx.name}${!GS.auto && Fx.isPlayer ? ' (you)' : ''}${relMark(Fx)}${Fx.alive && Fx.stretch < 0.995 ? ` <small class="over" title="Overstretched: income at ${Math.round(Fx.stretch * 100)}%">−${Math.round((1 - Fx.stretch) * 100)}%</small>` : ''}</span><b title="Victory points: major city 3, town 1">${trend}${prov}</b><span title="Men under arms">${fmt(men)}</span>${Fx.alive ? `<i class="vb" title="${prov} of the ${need} points that win the war"><i style="width:${Math.min(100, prov / need * 100).toFixed(1)}%;background:${Fx.css}"></i></i>` : ''}</div>`;
   }
-  if (GS.time < PEACE_TIME) { const l = Math.ceil(PEACE_TIME - GS.time); h += `<div class="note" style="margin:4px 0 0;font-size:11.5px">Truce: ${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')} left, or until someone strikes first.</div>`; }
+  const W = warsList();
+  if (W.length) h += '<div class="wars">' + W.map((w) => `<button class="${w.war ? 'w' : 'p'}" data-wars title="${FACTIONS[w.f].name} and ${FACTIONS[w.g].name}: ${w.war ? `at war for ${clock(w.t)}` : `treaty, ${clock(w.t)} left`}"><i class="sw" style="background:${fcss(w.f)}"></i>${w.war ? GLYPH.swords : GLYPH.dove}<i class="sw" style="background:${fcss(w.g)}"></i><span>${clock(w.t)}</span></button>`).join('') + '</div>';
   if (GS.auto) h += `<div id="goal">Leader: <b style="color:${lead.css}">${lead.name}</b> ${leadN}/${need} pts<div class="gbar"><i style="width:${Math.min(100, leadN / need * 100)}%;background:${lead.css}"></i></div></div>`;
   else {
     const mine = GS.factions[ME].pts;
@@ -66,6 +73,41 @@ export function updateHUD() {
   }
   const st = $('standRows');
   if (st.innerHTML !== h) st.innerHTML = h;
+  renderAlerts(GS.auto ? UI.viewF : PLAYER);
+  $('btnOver').classList.toggle('on', !!UI.selOver);
+}
+export const phoneLayout = () => window.innerWidth <= 820;
+// dispatches, under the crest (a scrolling row on phones); --alerts-h keeps the panel and the toasts clear of them
+export let alertsKey = '';
+export function renderAlerts(V) {
+  const el = $('alerts');
+  const h = GS.over || UI.mode !== 'play' ? '' : alertsHtml(computeAlerts(V), phoneLayout() ? 3 : 6);
+  if (h === alertsKey) return;
+  alertsKey = h;
+  el.innerHTML = h;
+  el.classList.toggle('hidden', !h);
+  $('hud').style.setProperty('--alerts-h', (h ? el.offsetHeight + 6 : 0) + 'px');
+}
+// show what a dispatch or a chronicle entry points at ('battle:id', 'city:id', 'army:id', 'prov:id', 'spot:x:y', 'over:tab', 'dip:f')
+export function goTo(ref) {
+  const [k, a, b] = ref.split(':');
+  clearSel(true);
+  const cam = (t) => { if (GS.auto && DIR.on && !UI.selEnemy) manualCam(); focusOn(t); };
+  const prov = (p) => { if (p !== UI.selProv) { UI.selProv = p; updateTerrainColors(); } };
+  if (k === 'battle') { const B = GS.battles.find((x) => x.id === +a); if (B) { if (!B.done) UI.selBattle = B; cam(B); } }
+  else if (k === 'city') { const c = MAP.cities[+a]; if (c) { UI.selCity = c; prov(c.prov); cam(c); } }
+  else if (k === 'army') { const A = GS.armies.find((x) => x.id === +a && !x.dead); if (A) { if (A.owner === ME && !GS.auto) UI.sel = [A]; else UI.selEnemy = A; cam(A); } }
+  else if (k === 'prov') { const P = MAP.provinces[+a]; if (P) { prov(P.id); cam(MAP.cities[P.major]); } }
+  else if (k === 'spot') cam({ x: +a, y: +b });
+  else if (k === 'over') UI.selOver = a;
+  else if (k === 'dip') { if (GS.auto) UI.selOver = 'wars'; else { UI.selDip = +a; UI.dipMsg = ''; } }
+  Sfx.click();
+  renderPanel(true);
+}
+export function toggleOverview(tab) {
+  if (UI.selOver && !tab) clearSel(true);
+  else { clearSel(true); UI.selOver = tab || 'empire'; }
+  Sfx.click(); renderPanel(true); updateHUD();
 }
 $('envoy').addEventListener('click', (e) => {
   const b = e.target.closest('[data-env]'); if (!b || !UI.envoy) return;
@@ -74,7 +116,17 @@ $('envoy').addEventListener('click', (e) => {
   else { relOf(PLAYER, E.g).nd[PLAYER] = GS.time + 90; log(`${pName()} sends the envoys of ${fname(E.g)} home.`, 'info'); Sfx.click(); }
   hideEnvoy(); updateHUD(); renderPanel(true);
 });
-$('standRows').addEventListener('pointerdown', (e) => { const r = e.target.closest('[data-f]'); if (r && !GS.auto) { clearSel(true); UI.selDip = +r.dataset.f; UI.dipMsg = ''; Sfx.click(); renderPanel(true); } else if (r && GS.auto) { UI.viewF = +r.dataset.f; Sfx.click(); updateHUD(); } });
+$('standRows').addEventListener('pointerdown', (e) => {
+  if (e.target.closest('[data-wars]')) { toggleOverview('wars'); return; }
+  const r = e.target.closest('[data-f]'); if (!r) return;
+  const f = +r.dataset.f;
+  if (GS.auto) { UI.viewF = f; Sfx.click(); updateHUD(); renderPanel(true); return; }
+  clearSel(true);
+  if (f === PLAYER) UI.selOver = 'empire'; else { UI.selDip = f; UI.dipMsg = ''; }
+  Sfx.click(); renderPanel(true);
+});
+$('alerts').addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) goTo(b.dataset.go); });
+$('btnOver').addEventListener('click', () => toggleOverview());
 $('crestbar').addEventListener('click', () => { if (!GS.auto) return; UI.viewF = (UI.viewF + 1) % GS.factions.length; Sfx.click(); updateHUD(); });
 $('speed').addEventListener('click', (e) => { const b = e.target.closest('[data-sp]'); if (b) setSpeed(+b.dataset.sp); });
 export function setSpeed(v) { if (GS.over) return; if (v > 0) UI.lastSpeed = v; GS.speed = v; Sfx.click(); updateHUD(); }
@@ -87,11 +139,11 @@ export function log(msg, type, focus) {
   if (focus) el.addEventListener('click', () => focusOn(focus));
   $log.appendChild(el);
   logItems.push({ el, t: performance.now() });
-  const max = isTouch ? 3 : GS.auto ? 4 : 6;
+  const max = phoneLayout() ? 2 : GS.auto ? 4 : 5;
   while (logItems.length > max) logItems.shift().el.remove();
 }
 export function updateLog() {
-  const now = performance.now(), life = isTouch ? 7000 : 14000;
+  const now = performance.now(), life = phoneLayout() ? 6000 : 14000;
   for (let i = logItems.length - 1; i >= 0; i--) {
     const it = logItems[i], age = now - it.t;
     it.el.classList.toggle('fade', age > life * 0.6);
@@ -123,8 +175,6 @@ export function onScreen(x, y) { projectCell(x, y, 0, _pp); return _pp.vis && _p
 export let bigHitT = 0;
 export function bigHitSound() { const now = performance.now(); if (now < bigHitT) return; bigHitT = now + 5000; Sfx.bigHit(); }
 export function onBattleEnd(B) {
-  const wf = B.sides[B.winner] ? B.sides[B.winner].faction : -1;
-  if (wf >= 0) GS.fstats[wf].won++;
   if (GS.auto) {
     const w = B.winner, l = 1 - w;
     const wl = Math.max(0, B.startMen[w] - sideMen(B.sides[w])), ll = Math.max(0, B.startMen[l] - sideMen(B.sides[l]));
@@ -158,7 +208,6 @@ export function onCityCaptured(c, prev, f) {
     if (UI.selCity === c) renderPanel(true);
     return;
   }
-  if (f >= 0) GS.fstats[f].captured++;
   if (GS.auto) {
     if (c.major) {
       log(`<b style="color:${fcss(f)}">${ownerName(f)}</b> takes ${c.name}${prev >= 0 ? ` from ${ownerName(prev)}` : ''} · ${P.name} changes hands`, prev >= 0 ? 'bad' : 'info', c);

@@ -13,7 +13,9 @@ import { initCampaign } from '../game/campaign.js';
 import { resetPathfinder } from '../game/armies.js';
 import { $log, $panel, $tip, clearSel, hidePopup, setME, SPECT, stopPlacing, UI } from './state.js';
 import { renderPanel } from './panel.js';
-import { defaultHint, focusOn, log, logItems, resetCrest, updateHUD } from './hud.js';
+import { defaultHint, focusOn, goTo, log, logItems, resetCrest, updateHUD } from './hud.js';
+import { chartHover, chartLeave, renderReport, REP } from './report.js';
+import { clock } from './format.js';
 import { buildMapLabels } from './labels.js';
 import { restoreGame, resumeCampaign, saveGame, showTitle } from '../game/save.js';
 import { DIR, setFollow, togglePolitical } from './director.js';
@@ -25,6 +27,7 @@ export const screens = { title: $('title'), menu: $('menu'), help: $('help'), ov
 export function showScreen(name) { for (const k in screens) screens[k].classList.toggle('hidden', k !== name); }
 export function prepareCampaign(seed, save) {
   $('loading').classList.remove('hidden');
+  $('overbar').classList.add('hidden');
   if (save) restoreGame(save); else initCampaign(seed);
   UI.fresh = !save;
   resetPathfinder();
@@ -105,36 +108,29 @@ export function openMenu() {
 export function closeMenu() { showScreen(null); if (!GS.over) GS.speed = UI.menuSpeed || 1; }
 export function showOver() {
   if (!GS.over || (GS.auto && !GS.factions[GS.winner])) return;   // a new campaign started meanwhile
-  const s0 = Math.floor(GS.time), tstr = Math.floor(s0 / 60) + ':' + String(s0 % 60).padStart(2, '0');
+  const tstr = clock(GS.time), N = MAP.provinces.length;
   $('againBtn').textContent = GS.auto ? 'Watch another war' : 'New campaign';
   $('otherBtn').textContent = GS.auto ? `Play as ${FACTIONS[UI.pick || 0].name} instead` : 'Watch an autoplay war instead';
+  const t = $('resTitle');
+  const fell = GS.factions.filter((F) => !F.alive).map((F) => F.name);
+  const fellTxt = fell.length ? ` Wiped out: ${fell.join(', ')}.` : '';
   if (GS.auto) {
     const W = GS.factions[GS.winner];
-    const t = $('resTitle');
     t.textContent = `${W.name} wins`;
     t.className = 'res-title'; t.style.color = W.css;
-    const np = MAP.provinces.filter((p) => p.owner === W.id).length;
-    const fell = GS.factions.filter((F) => !F.alive).map((F) => F.name);
-    $('resTag').textContent = `After ${tstr} of war, ${W.name} holds ${np} of ${MAP.provinces.length} provinces and ${GS.factions[W.id].pts} of ${STAND.total} victory points.${fell.length ? ' Wiped out: ' + fell.join(', ') + '.' : ''}`;
-    $('stProv').textContent = np;
-    $('stWon').textContent = GS.fstats[W.id].won;
-    $('stCap').textContent = GS.fstats[W.id].captured;
-    $('stTime').textContent = tstr;
-    showScreen('over');
-    return;
+    $('resTag').textContent = `After ${tstr} of war, ${W.name} holds ${MAP.provinces.filter((p) => p.owner === W.id).length} of ${N} provinces and ${W.pts} of ${STAND.total} victory points.${fellTxt}`;
+  } else {
+    const win = GS.over === 'win';
+    t.style.color = '';
+    t.textContent = win ? 'Victory' : `${pName()} has fallen`;
+    t.className = 'res-title ' + (win ? 'win' : 'lose');
+    $('resTag').textContent = (win ? VOICE[PLAYER].win : GS.rival ? `${GS.rival} now rules the continent. Another ${VOICE[PLAYER].leader} will try again.` : `${VOICE[PLAYER].lost} Another ${VOICE[PLAYER].leader} will try again.`) + ` The war lasted ${tstr}.`;
   }
-  $('resTitle').style.color = '';
-  const win = GS.over === 'win';
-  const t = $('resTitle');
-  t.textContent = win ? 'Victory' : `${pName()} has fallen`;
-  t.className = 'res-title ' + (win ? 'win' : 'lose');
-  $('resTag').textContent = win ? VOICE[PLAYER].win : GS.rival ? `${GS.rival} now rules the continent. Another ${VOICE[PLAYER].leader} will try again.` : `${VOICE[PLAYER].lost} Another ${VOICE[PLAYER].leader} will try again.`;
-  $('stProv').textContent = MAP.provinces.filter((p) => p.owner === PLAYER).length;
-  $('stWon').textContent = GS.stats.won;
-  $('stCap').textContent = GS.stats.captured;
-  const s = Math.floor(GS.time);
-  $('stTime').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  $('overbar').classList.add('hidden');
   showScreen('over');
+  REP.all = false;
+  renderReport();
+  screens.over.scrollTop = 0;
 }
 export function setMuteIcon() {
   $('muteIco').innerHTML = Sfx.muted
@@ -191,7 +187,23 @@ export function initScreens() {
   $('otherBtn').addEventListener('click', () => { Sfx.click(); newCampaign(!GS.auto); });
   $('btnMap').addEventListener('click', () => { Sfx.click(); togglePolitical(); });
   $('btnFollow').addEventListener('click', () => { Sfx.click(); setFollow(!DIR.on); });
-  $('keepBtn').addEventListener('click', () => { showScreen(null); });
+  $('keepBtn').addEventListener('click', () => { showScreen(null); $('overbar').classList.remove('hidden'); });
+  $('reportBtn').addEventListener('click', () => { Sfx.click(); showOver(); });
+  // the report: table views, every event, a click on an event shows the place on the map, the crosshair on the charts
+  const rep = $('report');
+  rep.addEventListener('click', (e) => {
+    const tb = e.target.closest('[data-tbl]');
+    if (tb) { REP.table[tb.dataset.tbl] = !REP.table[tb.dataset.tbl]; Sfx.click(); renderReport(); return; }
+    if (e.target.closest('[data-allev]')) { REP.all = !REP.all; Sfx.click(); renderReport(); return; }
+    const ev = e.target.closest('[data-act^="goto:"]');
+    if (ev) { showScreen(null); $('overbar').classList.remove('hidden'); goTo(ev.dataset.act.slice(5)); }
+  });
+  const hover = (e) => { const svg = e.target.closest && e.target.closest('svg.ch'); if (svg) chartHover(svg.closest('[data-chart]').dataset.chart, svg, e.clientX); };
+  rep.addEventListener('pointermove', hover);
+  // a touch shows the values until the next touch elsewhere; a mouse shows them while it is over the chart
+  rep.addEventListener('pointerdown', (e) => { hover(e); if (!(e.target.closest && e.target.closest('svg.ch'))) rep.querySelectorAll('svg.ch').forEach(chartLeave); });
+  rep.addEventListener('pointerout', (e) => { const svg = e.target.closest && e.target.closest('svg.ch'); if (svg && e.pointerType === 'mouse' && !svg.contains(e.relatedTarget)) chartLeave(svg); });
+  window.addEventListener('resize', () => { if (!screens.over.classList.contains('hidden')) renderReport(); });
   $('btnHelp').addEventListener('click', () => { UI.helpSpeed = GS.speed; GS.speed = 0; showScreen('help'); });
   $('helpClose').addEventListener('click', () => { showScreen(null); if (!GS.over) GS.speed = UI.helpSpeed || 1; });
   $('btnMenu').addEventListener('click', openMenu);

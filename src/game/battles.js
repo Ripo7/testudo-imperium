@@ -13,6 +13,7 @@ import { militiaMaxOf } from './campaign.js';
 import { findPath, nearestCity } from './armies.js';
 import { ME } from '../ui/state.js';
 import { log, onBattleEnd, onBattleStart, onCityCaptured } from '../ui/hud.js';
+import { recordBattle, recordCapture } from './chronicle.js';
 
 /* =========================================================
    Battles
@@ -264,6 +265,7 @@ export function endBattle(B, winner) {
   } else if (B.kind === 'fort') {
     if (winner === 0) { B.place.dead = true; removeFortMesh(B.place); GS.forts = GS.forts.filter((f) => f !== B.place); }
   }
+  recordBattle(B);
   onBattleEnd(B);
 }
 export function roundComp(a) { for (const t of ['spear', 'leg', 'arch', 'cav']) a.comp[t] = Math.round(a.comp[t]); a.comp.siege = Math.floor(a.comp.siege + 0.3); }
@@ -280,6 +282,7 @@ export function rout(a, B) {
 }
 export function captureCity(c, f) {
   const prev = c.owner;
+  recordCapture(c, prev, f);
   if (atWar(prev, f)) { const R = relOf(prev, f), k = SET_W(c); R.lc = R.lc || {}; R.lc[f] = GS.time; R.sc[f] = (R.sc[f] || 0) + k; R.w[prev] = (R.w[prev] || 0) + 0.07 * k; R.w[f] = Math.max(0, (R.w[f] || 0) - 0.03 * k); }
   c.owner = f; c.walls = Math.max(0, c.walls - 1); c.wallBuild = null; c.queue = [];
   c.impBuild = null; if (c.imps.length) c.imps.pop();   // the last building is looted
@@ -379,6 +382,7 @@ export function retreatArmy(a) {
   for (const t of ['spear', 'leg', 'arch', 'cav']) a.comp[t] *= 1 - loss;
   a.comp.siege *= 0.5;
   roundComp(a); a.battle = null; a.retreated = true;
+  S.left = (S.left || 0) + menOf(a.comp) + a.comp.siege * 8;   // they got away: not counted as losses
   if (menOf(a.comp) < 15) a.dead = true; else { rout(a, B); a.routT = 4; }
   if (a.owner === ME && !GS.auto) log(`Our army <b>retreats</b>, losing ${Math.round(loss * 100)}% to the pursuit.`, 'info', a);
   const empty = !S.armies.length && !(si === 1 && S.militia);

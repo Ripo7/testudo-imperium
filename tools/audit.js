@@ -29,7 +29,7 @@ const PROBES = [
   ['function endBattle(B, winner) {', A("'battleEnd'", 'B.kind', "winner === 0 ? 'attackerWon' : 'defenderWon'") + " if (B.kind === 'city' && B.place.walls > 0)" + A("'wallsSiegeEnd'", "winner === 0 ? 'fell' : 'held'")],
   ['  const broke = R.lock > GS.time;\n', ` if (!R.war) {${A("'declare'", "broke ? 'breakingTreaty' : 'clean'")} (window.__audWars = window.__audWars || {})[pairKey(f, g)] = GS.time; }\n`],
   ['function makePeace(f, g, dur, payer, gold) {\n  const R = relOf(f, g);', ` if (R.war) {${A("'peace'", "payer != null && gold > 0 ? 'withTribute' : 'free'")} const t0 = (window.__audWars || {})[pairKey(f, g)]; if (t0 != null) (window.__audDur = window.__audDur || []).push(Math.round(GS.time - t0)); }`],
-  ['    if (Math.random() < p) { captureCity(c, NEUTRAL);', A("'revolt'")],
+  ['    if (Math.random() < revoltRisk(c, F)) { captureCity(c, NEUTRAL);', A("'revolt'")],
   ['function showEnvoy(g, gold) {', A("'envoy'")],
 ];
 const applied = PROBES.map(() => 0);

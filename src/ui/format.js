@@ -31,3 +31,22 @@ export const RCOL = { gold: '#f2c14e', food: '#9fd36a', wood: '#c08a55', stone: 
 export const costMini = (F, cost) => '<span class="cst">' + RES.filter((r) => cost[r]).map((r) => `<span class="${F.res[r] < cost[r] ? 'no' : ''}" style="--c:${RCOL[r]}" title="${r}">${cost[r]}</span>`).join('') + '</span>';
 export const costHtml = (F, cost, k = 1) => RES.filter((r) => cost[r]).map((r) => `<span class="${F.res[r] < cost[r] * k ? 'no' : ''}">${Math.round(cost[r] * k)} ${r}</span>`).join(' · ');
 export const oddsWord = (p) => (p >= 0.8 ? ['Decisive', 'good'] : p >= 0.6 ? ['Favorable', 'good'] : p >= 0.42 ? ['Even fight', 'even'] : p >= 0.2 ? ['Risky', 'bad'] : ['Suicidal', 'bad']);
+// faction colours for chart lines: each power's own hue, stepped so the four stay apart on the dark tablet,
+// for colour-blind readers too (checked with the dataviz palette validator, all pairs)
+export const FCHART = ['#c6404a', '#a966b8', '#1e8fee', '#af8433'];
+export const clock = (t) => { const s = Math.max(0, Math.floor(t)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+// small one-colour glyphs for dispatches and the chronicle (they take the text colour)
+const g = (d, fill = true) => `<svg viewBox="0 0 24 24" aria-hidden="true"${fill ? ' fill="currentColor"' : ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'}>${d}</svg>`;
+export const GLYPH = {
+  swords: g('<path d="M3 3l3.4 1 8.8 8.8-2.4 2.4-8.8-8.8zM21 3l-3.4 1-8.8 8.8 2.4 2.4 8.8-8.8z"/><path d="M11.5 17L17 11.5M7 11.5l5.5 5.5M15 15l4.3 4.3M9 15l-4.3 4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="20.2" cy="20.2" r="1.6"/><circle cx="3.8" cy="20.2" r="1.6"/>'),
+  tower: g('<path d="M5 21V7h2.5v2.5h2.2V7h4.6v2.5h2.2V7H19v14h-5v-4.5a2 2 0 0 0-4 0V21z"/>'),
+  march: g('<path d="M3 12h13M12 6l6 6-6 6"/><path d="M21 5v14"/>', false),
+  flame: g('<path d="M12 2.5c.8 3.6 5.7 5.7 5.7 10.8a5.7 5.7 0 0 1-11.4 0c0-2.7 1.4-4.2 2.6-6.4.9 1.7 1.7 2.6 2.9 2.9-.6-2.8-.6-4.9.2-7.3z"/>'),
+  grain: g('<path d="M12 22V9"/><path d="M12 13c-3 0-5-2-5-5 3 0 5 2 5 5zM12 13c3 0 5-2 5-5-3 0-5 2-5 5zM12 8.5c-1.6-1.2-1.6-4 0-5.5 1.6 1.5 1.6 4.3 0 5.5z"/>', false),
+  coin: g('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9.6 9.8h3.6a1.4 1.4 0 0 1 0 2.8h-2.4a1.4 1.4 0 0 0 0 2.8h3.8"/>', false),
+  unrest: g('<path d="M8 21h8M12 21v-6"/><path d="M12 15c-3.2 0-4.6-2.4-4.6-4.6 0-2.6 2.4-3.8 2.6-7.4 1.6 1.5 2 3 2 4.4.8-.8 1.4-1.8 1.6-3 1.8 1.6 3 3.6 3 6 0 2.2-1.4 4.6-4.6 4.6z"/>', false),
+  crown: g('<path d="M3 19h18l-1.5-11-4.8 4.2L12 5l-2.7 7.2L4.5 8z"/>'),
+  dove: g('<path d="M4 19c1-7.6 6.4-13 16-14.5-.6 9.3-6.5 14.6-16 14.5z"/><path d="M5 18L13 10" stroke="#00000055" stroke-width="1.2"/>'),
+  skull: g('<path d="M12 3a8 8 0 0 0-8 8c0 2.7 1.3 4.3 3 5.3V20h10v-3.7c1.7-1 3-2.6 3-5.3a8 8 0 0 0-8-8zm-3 7.5a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6zm6 0a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"/>'),
+  scroll: g('<path d="M7 3h11a2 2 0 0 1 2 2v1h-4M7 3a2 2 0 0 0-2 2v12M7 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2M7 21h10a2 2 0 0 0 2-2v-2H9"/><path d="M11 8h5M11 12h5"/>', false),
+};

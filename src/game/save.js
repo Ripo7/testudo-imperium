@@ -13,6 +13,7 @@ import { renderPanel } from '../ui/panel.js';
 import { log, updateHUD } from '../ui/hud.js';
 import { setAuto, showScreen } from '../ui/screens.js';
 import { togglePolitical } from '../ui/director.js';
+import { fillStats } from './chronicle.js';
 
 /* =========================================================
    Save & resume (kept in this browser only)
@@ -34,7 +35,7 @@ export function serializeGame() {
   return {
     v: 1, mv: MOVE_RULES, seed: MAP.seed, print: mapPrint(), at: Date.now(),
     gs: {
-      time: GS.time, auto: GS.auto, player: PLAYER, rel: GS.rel, diff: GS.diff, fog: !!GS.fog, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT,
+      time: GS.time, auto: GS.auto, player: PLAYER, rel: GS.rel, diff: GS.diff, fog: !!GS.fog, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT, chron: GS.chron, hist: GS.hist,
       speed: playing ? (GS.speed || UI.menuSpeed || UI.helpSpeed || UI.lastSpeed || 1) : (UI.resumeSpeed || 1),
     },
     factions: GS.factions.map((F) => ({ res: F.res, inc: F.inc, upk: F.upk, net: F.net, alive: F.alive, starving: F.starving, unpaid: F.unpaid, aiT: F.aiT, eliminatedAt: F.eliminatedAt, provoked: F.provoked, oath: F.oath, noDealT: F.noDealT, intel: F.intel || {} })),
@@ -48,7 +49,7 @@ export function serializeGame() {
     battles: GS.battles.filter((B) => !B.done).map((B) => ({
       id: B.id, kind: B.kind, place: B.place ? B.place.id : null, x: B.x, y: B.y, round: B.round, t: B.t, luck: B.luck, startMen: B.startMen,
       terrainDef: B.terrainDef, rough: B.rough, river: B.river, dugIn: B.dugIn, flank: B.flank,
-      sides: B.sides.map((S) => ({ f: S.faction, a: S.armies.filter((a) => !a.dead).map((a) => a.id), m: S.militia ? { men: S.militia.men, sp: S.militia.sp } : null, start: S.start })),
+      sides: B.sides.map((S) => ({ f: S.faction, a: S.armies.filter((a) => !a.dead).map((a) => a.id), m: S.militia ? { men: S.militia.men, sp: S.militia.sp } : null, start: S.start, l: S.left || 0 })),
     })),
     view: playing ? { x: CAM.tx, z: CAM.tz, d: CAM.td, pol: VIEW.political } : (UI.resumeView ? Object.assign({ pol: UI.resumePolitical }, UI.resumeView) : null),
   };
@@ -57,7 +58,7 @@ export function restoreGame(S) {
   initCampaign(S.seed);
   if (mapPrint() !== S.print || S.cities.length !== MAP.cities.length) throw new Error('This save belongs to a different map.');
   const g = S.gs;
-  Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, fog: !!g.fog, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: g.fstats, checkT: g.checkT || 1, armies: [], forts: [], battles: [], over: null });
+  Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, fog: !!g.fog, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: fillStats(g.fstats), chron: g.chron || [], hist: g.hist || [], checkT: g.checkT || 1, armies: [], forts: [], battles: [], over: null });
   setPlayer(g.player || 0);   // saves from before any power was playable: Rome
   setME(GS.auto ? SPECT : PLAYER);
   S.factions.forEach((d, i) => Object.assign(GS.factions[i], d));
@@ -97,7 +98,7 @@ export function restoreGame(S) {
       id: d.id, kind: d.kind, place, x: d.x, y: d.y, round: d.round, t: d.t, done: false, luck: d.luck, startMen: d.startMen,
       terrainDef: d.terrainDef, rough: d.rough, river: d.river, dugIn: d.dugIn, flank: d.flank,
     };
-    B.sides = d.sides.map((s) => ({ faction: s.f, armies: s.a.map((id) => armies.get(id)).filter(Boolean), militia: s.m ? { men: s.m.men, sp: s.m.sp, ref: place } : null, start: s.start }));
+    B.sides = d.sides.map((s) => ({ faction: s.f, armies: s.a.map((id) => armies.get(id)).filter(Boolean), militia: s.m ? { men: s.m.men, sp: s.m.sp, ref: place } : null, start: s.start, left: s.l || 0 }));
     if (!B.sides[0].armies.length) continue;   // the attackers are gone: nothing left to fight
     for (const side of B.sides) for (const a of side.armies) { a.state = 'battle'; a.battle = B; }
     if (place) place.battle = B;

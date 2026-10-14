@@ -10,7 +10,10 @@ Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a 
 - **Battles decided by strategy**: terrain, rivers, walls, flanks, stance and the odds you accept. Retreat when a battle turns.
 - **An economy of land and cities**: provinces share their land income between settlements, cities take improvements (farmlands, forum, barracks, temple), soldiers draw pay, and conquered cities can revolt.
 - **War and peace**: powers stay at peace until one declares war. Wars wear both sides down until they sign a treaty, with tribute paid by the loser.
+- **Know what's going on**: dispatches flag what needs attention now (cities under assault, enemy armies closing in, plunder, famine, unrest, a rival nearing victory), the Overview shows your treasury, armies, cities and wars, and the chronicle records the whole war. When it ends, a report charts how it went.
 - **Autoplay** to watch four AI empires fight it out through the eyes of the power you follow, and take command of it at any moment. Three difficulty levels, and saves that survive closing the tab.
+
+![The end-of-war report](docs/screenshot-report.jpg)
 
 Everything is procedural and drawn in code: the map, the painted terrain, the trees, cities, soldiers and the synthesized sound.
 
@@ -54,8 +57,10 @@ src/
                       soldiers (instanced crowds), overlays, camera, light and clouds
   game/               the simulation: factions and units (data.js), armies and pathfinding,
                       battles, economy, standing and victory, diplomacy, AI, fog of war
-                      (sight.js), save & resume
-  ui/                 panels, HUD, map labels, input, screens, the autoplay camera
+                      (sight.js), the record of the war (chronicle.js), save & resume
+  ui/                 panels, HUD, dispatches (alerts.js), the Overview (overview.js),
+                      the end-of-war report (report.js), map labels, input, screens,
+                      the autoplay camera
 tests/                Node and browser tests (npm test)
 tools/                balance and audit scripts
 ```
@@ -69,7 +74,7 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 `npm test` builds the game and runs:
 
 - **map**: map generation is deterministic and every province has its cities (plain Node).
-- **smoke**: a campaign plays on desktop and phone sizes, every panel renders, the fog hides what it should, no console errors.
+- **smoke**: a campaign plays on desktop and phone sizes, every panel (Overview tabs included) renders, the fog hides what it should, the war is recorded and the end-of-war report renders, no console errors.
 - **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
 - **determinism**: the same seed and the same random numbers give exactly the same game.
 - **save & resume**: play, close the tab, reopen, and check the restored game matches the save exactly.

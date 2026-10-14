@@ -5,6 +5,7 @@ import { BIOME, generateMap, rng32 } from '../map/generate.js';
 import { FACTIONS, hasImp, NEUTRAL, PLAYER } from './data.js';
 import { makeArmy } from './armies.js';
 import { UI } from '../ui/state.js';
+import { fillStats } from './chronicle.js';
 
 /* =========================================================
    Campaign setup
@@ -37,7 +38,7 @@ export function computeCityYield(c) {
 export function initCampaign(seed) {
   setMap(generateMap(seed));
   Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, fog: false, diff: UI.diff == null ? 1 : UI.diff,
-    fstats: FACTIONS.map(() => ({ won: 0, captured: 0 })) });
+    fstats: fillStats(), chron: [], hist: [], rivalF: -1 });
   GS.factions = FACTIONS.map((F, i) => ({
     id: i, ...F, res: { gold: 500, food: 500, wood: 400, stone: 300 },
     inc: { gold: 0, food: 0, wood: 0, stone: 0 }, upk: { gold: 0, food: 0, wood: 0, stone: 0 }, net: { gold: 0, food: 0, wood: 0, stone: 0 },

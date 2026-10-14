@@ -11,6 +11,7 @@ import { militiaMaxOf } from './campaign.js';
 import { makeArmy } from './armies.js';
 import { onImpDone } from '../ui/panel.js';
 import { onRecruited, onWallsDone } from '../ui/hud.js';
+import { bump } from './chronicle.js';
 
 // gold paid for, or received for, 100 food, wood or stone
 export const marketOf = (f) => perkOf(f).market || MARKET;
@@ -41,13 +42,13 @@ export function economy(dt) {
     if (c.loyal < 1) c.loyal = Math.min(1, c.loyal + dt * (temple ? 3 : 1) / (LOYAL_TIME * (own ? 1 + OVER_SLOW * Math.max(0, own.share - FAIR_SHARE) : 1)));
     if (own && c.impBuild) {
       const ib = c.impBuild; ib.t += dt / (IMPS[ib.id].time * buildTime(c.owner));
-      if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; c.militiaMax = militiaMaxOf(c); onImpDone(c, ib.id); }
+      if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); onImpDone(c, ib.id); }
     }
     if (own && !(c.battle && !c.battle.done)) { const k = 0.8 * c.loyal * (temple ? 1 - (1 - own.stretch) * 0.5 : own.stretch) * (own.isPlayer ? 1 : diffOf().inc), y = cityYield(c, c.owner), l = landShare(c), pk = plunderer(c.prov, c.owner) ? PLUNDER : 1; for (const r of RES) own.inc[r] += (y[r] + l[r] * pk) * k; }
     // militia regen
     if (!(c.battle && !c.battle.done) && c.militia < c.militiaMax) c.militia = Math.min(c.militiaMax, c.militia + c.militiaMax * 0.012 * dt);
     // building walls
-    if (c.wallBuild) { c.wallBuild.t += dt / (WALL_TIME[c.wallBuild.level] * buildTime(c.owner)); if (c.wallBuild.t >= 1) { c.walls = c.wallBuild.level; c.wallBuild = null; c.militiaMax = militiaMaxOf(c); refreshCityMesh(c); onWallsDone(c); } }
+    if (c.wallBuild) { c.wallBuild.t += dt / (WALL_TIME[c.wallBuild.level] * buildTime(c.owner)); if (c.wallBuild.t >= 1) { c.walls = c.wallBuild.level; c.wallBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); refreshCityMesh(c); onWallsDone(c); } }
     // recruiting
     if (c.queue.length && c.owner >= 0 && !(c.battle && !c.battle.done)) {
       const q = c.queue[0];
@@ -118,6 +119,7 @@ export function spawnRecruits(c, type) {
     a.stance = GS.factions[c.owner].isPlayer ? 'aggr' : 'def';
   }
   a.comp[type] += add;
+  if (type !== 'siege') bump(c.owner, 'raised', add);
   onRecruited(c, type, a);
 }
 export function recruit(F, c, type) {
@@ -163,6 +165,7 @@ export function buildFort(F, x, y) {
   pay(F, cost);
   const f = { id: GS.nextId++, owner: F.id, x: Math.round(x), y: Math.round(y), built: 0, militia: 0, dead: false, battle: null };
   GS.forts.push(f);
+  bump(F.id, 'works');
   buildFortMesh(f);
   return f;
 }

@@ -4,7 +4,10 @@ export const SET_W = (c) => (c.major ? 3 : 1);
 export const WIN_SHARE = 0.5, FAIR_SHARE = 0.3, SECURE = 1.12, OVER_RATE = 0.8, OVER_FLOOR = 0.6, OVER_SLOW = 3;
 export let STAND = { total: 1, need: 1 };
 // after 25 minutes of war a clear hegemon is enough: the bar eases from 50% to 40% over the next 10 minutes
-export const winShare = () => WIN_SHARE - Math.min(0.1, Math.max(0, (GS.time - 1500) / 6000));
+export const winShareAt = (t) => WIN_SHARE - Math.min(0.1, Math.max(0, (t - 1500) / 6000));
+export const winShare = () => winShareAt(GS.time);
+// the points needed to win at time t
+export const needAt = (t) => Math.ceil(STAND.total * winShareAt(t));
 export function updateStanding() {
   let total = 0;
   for (const F of GS.factions) F.pts = 0;
