@@ -1,10 +1,9 @@
 import { atWar } from './diplomacy.js';
-import { fairShare, holdsIn, OVER_SLOW, provSecure, provW, SECURE, SET_W, updateStanding } from './standing.js';
+import { fairShare, holdsIn, provSecure, provW, SET_W, updateStanding } from './standing.js';
 import { canAfford, cellOf, emptyComp, GS, MAP, menOf, pay, provAt } from './state.js';
 import { BIOME } from '../map/generate.js';
 import {
-  buildTime, diffOf, FORT_GUARD, FORT_MAX, FORT_TIME, fortCost, hasImp, impCost, IMPS, impSlots, LOYAL_TIME,
-  MARKET, PAY, perkOf, PLUNDER, RES, sigOf, U, unitCost, UNITS, unitTime, WALL_TIME, wallCost,
+  BUILD, buildTime, diffOf, ECON, fortCost, hasImp, impCost, IMPS, impSlots, MARKET, perkOf, RES, sigOf, U, unitCost, UNITS, unitTime, wallCost, wallTime,
 } from './data.js';
 import { militiaMaxOf } from './campaign.js';
 import { makeArmy } from './armies.js';
@@ -38,26 +37,26 @@ export function economy(dt) {
     const own = c.owner >= 0 ? GS.factions[c.owner] : null;
     // a sprawling empire is slow to settle its conquests
     const temple = own && hasImp(c, 'temple');
-    if (c.loyal < 1) c.loyal = Math.min(1, c.loyal + dt * (temple ? 3 : 1) / (LOYAL_TIME * (own ? 1 + OVER_SLOW * Math.max(0, own.share - fair) : 1)));
+    if (c.loyal < 1) c.loyal = Math.min(1, c.loyal + dt * (temple ? BUILD.temple.loyalty : 1) / (ECON.loyalTime * (own ? 1 + ECON.overSlow * Math.max(0, own.share - fair) : 1)));
     if (own && c.impBuild) {
       const ib = c.impBuild; ib.t += dt / (IMPS[ib.id].time * buildTime(c.owner));
       if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); HOOKS.impDone(c, ib.id); }
     }
-    if (own && !(c.battle && !c.battle.done)) { const k = 0.8 * c.loyal * (temple ? 1 - (1 - own.stretch) * 0.5 : own.stretch) * (own.isPlayer ? 1 : diffOf().inc), y = cityYield(c, c.owner), l = landShare(c), pk = plunderer(c.prov, c.owner) ? PLUNDER : 1; for (const r of RES) own.inc[r] += (y[r] + l[r] * pk) * k; if (pk < 1) bump(c.owner, 'plund', costSum(l) * (1 - pk) * k * dt); }
+    if (own && !(c.battle && !c.battle.done)) { const k = 0.8 * c.loyal * (temple ? 1 - (1 - own.stretch) * BUILD.temple.stretch : own.stretch) * (own.isPlayer ? 1 : diffOf().inc), y = cityYield(c, c.owner), l = landShare(c), pk = plunderer(c.prov, c.owner) ? ECON.plunder : 1; for (const r of RES) own.inc[r] += (y[r] + l[r] * pk) * k; if (pk < 1) bump(c.owner, 'plund', costSum(l) * (1 - pk) * k * dt); }
     // militia regen
     if (!(c.battle && !c.battle.done) && c.militia < c.militiaMax) c.militia = Math.min(c.militiaMax, c.militia + c.militiaMax * 0.012 * dt);
     // building walls
-    if (c.wallBuild) { c.wallBuild.t += dt / (WALL_TIME[c.wallBuild.level] * buildTime(c.owner)); if (c.wallBuild.t >= 1) { c.walls = c.wallBuild.level; c.wallBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); HOOKS.cityChanged(c); HOOKS.wallsDone(c); } }
+    if (c.wallBuild) { c.wallBuild.t += dt / (wallTime(c.wallBuild.level) * buildTime(c.owner)); if (c.wallBuild.t >= 1) { c.walls = c.wallBuild.level; c.wallBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); HOOKS.cityChanged(c); HOOKS.wallsDone(c); } }
     // recruiting
     if (c.queue.length && c.owner >= 0 && !(c.battle && !c.battle.done)) {
       const q = c.queue[0];
-      q.t += dt / (unitTime(q.type, c.owner) * (hasImp(c, 'barracks') ? 0.7 : 1));
+      q.t += dt / (unitTime(q.type, c.owner) * (hasImp(c, 'barracks') ? BUILD.barracks.speed : 1));
       if (q.t >= 1) { c.queue.shift(); spawnRecruits(c, q.type); }
     }
   }
   for (const f of GS.forts) {
-    if (f.built < 1) { f.built = Math.min(1, f.built + dt / (FORT_TIME * buildTime(f.owner))); f.militia = FORT_MAX * f.built * 0.6; HOOKS.fortChanged(f); }
-    else if (!(f.battle && !f.battle.done)) f.militia = Math.min(FORT_MAX, f.militia + FORT_MAX * 0.02 * dt);
+    if (f.built < 1) { f.built = Math.min(1, f.built + dt / (BUILD.fort.time * buildTime(f.owner))); f.militia = BUILD.fort.max * f.built * 0.6; HOOKS.fortChanged(f); }
+    else if (!(f.battle && !f.battle.done)) f.militia = Math.min(BUILD.fort.max, f.militia + BUILD.fort.max * 0.02 * dt);
   }
   for (const a of GS.armies) {
     if (a.dead) continue;
@@ -65,7 +64,7 @@ export function economy(dt) {
     const p = provAt(a.x, a.y);
     const P = p >= 0 ? MAP.provinces[p] : null;
     const home = !!P && holdsIn(P, a.owner);
-    const k = home || (P && P.holders.some((h) => atWar(a.owner, h))) ? 1 : 1.35;   // at war, they forage on enemy land
+    const k = home || (P && P.holders.some((h) => atWar(a.owner, h))) ? 1 : ECON.abroad;   // at war, they forage on enemy land
     for (const t of ['spear', 'leg', 'arch', 'cav']) F.upk.food += a.comp[t] / 100 * U(t, a.owner).upk * k * (perkOf(a.owner).feed || 1);
     F.upk.food += a.comp.siege * UNITS.siege.upk;
     F.upk.gold += armyPay(a);
@@ -88,17 +87,17 @@ export function economy(dt) {
   GS.armies = GS.armies.filter((a) => !a.dead || false);
 }
 // soldiers' pay: gold per second
-export function armyPay(a) { return (menOf(a.comp) + a.comp.cav + (sigOf(a.owner).beast ? a.comp.leg : 0)) / 100 * PAY * (perkOf(a.owner).pay || 1); }
+export function armyPay(a) { return (menOf(a.comp) + a.comp.cav + (sigOf(a.owner).beast ? a.comp.leg : 0)) / 100 * ECON.pay * (perkOf(a.owner).pay || 1); }
 // the slice of its province's land income a settlement brings its owner (before the 0.8 × loyalty × stretch factor)
 // an army at war with the owner, loose in the province and not within reach of one of the owner's forts
 export function plunderer(p, owner) {
   const L = GS.raid && GS.raid.get(p);
   if (!L || owner < 0) return null;
-  for (const a of L) if (atWar(a.owner, owner) && !GS.forts.some((f) => !f.dead && f.owner === owner && f.built >= 1 && Math.hypot(f.x - a.x, f.y - a.y) < FORT_GUARD)) return a;
+  for (const a of L) if (atWar(a.owner, owner) && !GS.forts.some((f) => !f.dead && f.owner === owner && f.built >= 1 && Math.hypot(f.x - a.x, f.y - a.y) < BUILD.fort.guard)) return a;
   return null;
 }
 export function landShare(c) {
-  const P = MAP.provinces[c.prov], y = provYield(P, c.owner), k = SET_W(c) / provW(P) * (provSecure(P) ? SECURE : 1);
+  const P = MAP.provinces[c.prov], y = provYield(P, c.owner), k = SET_W(c) / provW(P) * (provSecure(P) ? ECON.secure : 1);
   return { gold: y.gold * k, food: y.food * k, wood: y.wood * k, stone: y.stone * k };
 }
 // income after the owner's speciality (before the 0.8 × loyalty factor)
@@ -108,7 +107,7 @@ export function provYield(p, f) {
 }
 export function cityYield(c, f) {
   const P = perkOf(f), y = c.yield;
-  return { gold: (y.gold + (P.port && c.port ? 0.3 * (P.port - 1) : 0) + (hasImp(c, 'forum') ? 0.8 : 0)) * (P.gold || 1), food: y.food + (hasImp(c, 'farm') ? 0.9 : 0), wood: y.wood, stone: y.stone };
+  return { gold: (y.gold + (P.port && c.port ? P.port : 0) + (hasImp(c, 'forum') ? BUILD.forum.gold : 0)) * (P.gold || 1), food: y.food + (hasImp(c, 'farm') ? BUILD.farm.food : 0), wood: y.wood, stone: y.stone };
 }
 export function spawnRecruits(c, type) {
   const add = U(type, c.owner).n;

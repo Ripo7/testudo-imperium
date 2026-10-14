@@ -3,7 +3,7 @@ import { atPeace, atWar, declareWar, relOf } from './diplomacy.js';
 import { SET_W } from './standing.js';
 import { angDiff, cellOf, cloneComp, dist, emptyComp, GS, MAP, menOf, rnd, rndIn, starsOf } from './state.js';
 import { BIOME, BIOME_NAME, rng32 } from '../map/generate.js';
-import { BALN, FORT_WALLS, K_DMG, NEUTRAL, PLAYER, ROUND_T, sigOf, TERRAIN_DEF, TW_CAV, TW_DEF, TYPES5, UNITS, VS } from './data.js';
+import { BUILD, COMBAT, NEUTRAL, PLAYER, sgnPct, sigOf, TERRAIN_DEF, TW_CAV, TW_DEF, TYPES5, UNITS, VS } from './data.js';
 import { militiaMaxOf } from './campaign.js';
 import { findPath, nearestCity } from './armies.js';
 import { HOOKS } from './hooks.js';
@@ -32,37 +32,37 @@ export function sideComp(s) {
 }
 export function battleWalls(B) {
   if (B.kind === 'field') return 0;
-  const w = B.kind === 'city' ? B.place.walls : FORT_WALLS;
+  const w = B.kind === 'city' ? B.place.walls : BUILD.fort.walls;
   let siege = 0; for (const a of B.sides[0].armies) siege += a.comp.siege;
   return Math.max(0, w - Math.floor(siege / 2));
 }
 export function sideMods(B, si) {
-  const S = B.sides[si], isAtt = si === 0;
+  const S = B.sides[si], isAtt = si === 0, C = COMBAT;
   let w = 0, sAtk = 0, sDef = 0, legs = 0, testudoLegs = 0;
   for (const a of S.armies) {
-    const m = menOf(a.comp) + a.comp.siege * 8, v = 1 + 0.07 * starsOf(a);
-    sAtk += m * v * (a.stance === 'aggr' ? 1.12 : 0.92);
-    sDef += m * v * (a.stance === 'def' ? 1.22 : 0.95);
+    const m = menOf(a.comp) + a.comp.siege * 8, v = 1 + C.star * starsOf(a);
+    sAtk += m * v * (a.stance === 'aggr' ? C.aggrAtk : C.defAtk);
+    sDef += m * v * (a.stance === 'def' ? C.defDef : C.aggrDef);
     w += m; legs += a.comp.leg; if (a.stance === 'def') testudoLegs += a.comp.leg;
   }
-  if (S.militia) { sAtk += S.militia.men * 0.9; sDef += S.militia.men; w += S.militia.men; }
+  if (S.militia) { sAtk += S.militia.men * C.militiaAtk; sDef += S.militia.men; w += S.militia.men; }
   const SG = sigOf(S.faction);
   const M = { atk: w ? sAtk / w : 1, def: w ? sDef / w : 1, cav: 1, arch: 1, sig: 1, testudo: !!SG.testudo && legs > 0 && testudoLegs / legs > 0.5 };
-  if (SG.home && SG.home.includes(MAP.biome[cellOf(B.x, B.y)])) M.sig *= 1.25;
+  if (SG.home && SG.home.includes(MAP.biome[cellOf(B.x, B.y)])) M.sig *= C.home;
   if (isAtt) {
-    if (B.river && B.dugIn) M.atk *= 0.8;
-    if (B.flank) M.atk *= 1.25;
-    if (B.kind !== 'field' || B.rough) M.cav *= 0.6;
+    if (B.river && B.dugIn) M.atk *= C.river;
+    if (B.flank) M.atk *= C.flank;
+    if (B.kind !== 'field' || B.rough) M.cav *= C.cavRough;
     if (B.kind !== 'field' && SG.assault) M.sig *= SG.assault;
     if (B.kind === 'field' && B.rough && SG.rough) M.sig *= SG.rough;
   } else {
     if (B.kind === 'field' && B.dugIn) M.def *= B.terrainDef;
-    if (B.kind !== 'field') { const L = battleWalls(B); M.def *= 1 + 0.45 * L; M.arch *= 1 + 0.3 * L; }
+    if (B.kind !== 'field') { const L = battleWalls(B); M.def *= 1 + C.wallDef * L; M.arch *= 1 + C.wallArch * L; }
   }
   return M;
 }
 export function battleRound(B, rng, noise) {
-  const phase = B.round < BALN.rr ? 0 : B.round === BALN.rr ? 1 : 2;
+  const phase = B.round < COMBAT.rr ? 0 : B.round === COMBAT.rr ? 1 : 2;
   const comps = [sideComp(B.sides[0]), sideComp(B.sides[1])];
   const mods = [sideMods(B, 0), sideMods(B, 1)];
   const loss = [emptyComp(), emptyComp()];
@@ -73,14 +73,14 @@ export function battleRound(B, rng, noise) {
     for (const a of TYPES5) {
       const n = A[a]; if (n <= 0) continue;
       let p, shot = a === 'arch';
-      if (a === 'arch') p = n * (phase === 0 ? BALN.archR : BALN.archM);
+      if (a === 'arch') p = n * (phase === 0 ? COMBAT.archR : COMBAT.archM);
       else if (a === 'leg') {
         if (phase === 0) { if (!SA.shoot) continue; p = n * SA.shoot; shot = true; }
         else p = n * SA.atk * (phase === 1 ? SA.charge : 1);
       }
       else if (phase === 0) continue;
       else if (a === 'siege') p = n * UNITS.siege.atk;
-      else p = n * UNITS[a].atk * (a === 'cav' ? (phase === 1 ? 1.8 : 1) * (D.cav < menOf(D) * 0.1 ? 1.25 : 1) : 1);
+      else p = n * UNITS[a].atk * (a === 'cav' ? (phase === 1 ? COMBAT.cavCharge : 1) * (D.cav < menOf(D) * 0.1 ? COMBAT.cavLone : 1) : 1);
       p *= M.atk * nz * (a === 'cav' ? M.cav : 1) * (a === 'arch' ? M.arch : 1) * (a === 'leg' ? M.sig : 1);
       const TW = shot ? null : a === 'cav' || (a === 'leg' && SA.tw === 'cav') ? TW_CAV : TW_DEF;
       let sw = 0; const ws = {};
@@ -96,10 +96,10 @@ export function battleRound(B, rng, noise) {
       for (const t in ws) {
         // elite against elite: the four form a cycle (SIG.beats), otherwise the usual matchup table
         const mult = a === 'leg' && t === 'leg' ? (SA.beats === SD.key ? SA.beatsBy : SD.beats === SA.key ? 1 / SD.beatsBy : 1) : ((vs && vs[t]) || 1);
-        let dmg = p * ws[t] / sw * mult * K_DMG;
+        let dmg = p * ws[t] / sw * mult * COMBAT.kDmg;
         if (t === 'leg') {
           dmg *= SD.hurt[shot ? 'shot' : a] || 1;
-          if (shot && MD.testudo) dmg *= 0.45;
+          if (shot && MD.testudo) dmg *= COMBAT.testudo;
         }
         loss[o][t] += dmg / ((t === 'leg' ? SD.hp : UNITS[t].hp) * MD.def);
       }
@@ -126,7 +126,7 @@ export function sideBroken(S) {
   if (S.militia && S.militia.men > 3) return false;   // city/fort defenders fight to the end
   let stars = 0, w = 0;
   for (const a of S.armies) { const m = menOf(a.comp); stars += starsOf(a) * m; w += m; }
-  const thr = 0.5 + 0.06 * (w ? stars / w : 0);
+  const thr = COMBAT.breakAt + COMBAT.breakStar * (w ? stars / w : 0);
   return 1 - men / Math.max(1, S.start) >= thr;
 }
 
@@ -147,18 +147,18 @@ export function modsList(B, forSide) {
   const L = [];
   const W = battleWalls(B);
   if (B.kind !== 'field') {
-    const base = B.kind === 'city' ? B.place.walls : FORT_WALLS;
-    if (base) L.push([`Walls ${base}${W < base ? ' (siege: ' + W + ')' : ''}`, W ? `defense +${Math.round(45 * W)}%` : 'breached', 1]);
+    const base = B.kind === 'city' ? B.place.walls : BUILD.fort.walls;
+    if (base) L.push([`Walls ${base}${W < base ? ' (siege: ' + W + ')' : ''}`, W ? `defense +${Math.round(COMBAT.wallDef * 100 * W)}%` : 'breached', 1]);
   } else if (B.dugIn && B.terrainDef > 1) L.push([BIOME_NAME[MAP.biome[cellOf(B.x, B.y)]], `defense +${Math.round((B.terrainDef - 1) * 100)}%`, 1]);
-  if (B.river && B.dugIn) L.push(['River crossing', 'attack −20%', 0]);
-  if (B.flank) L.push(['Flanking', 'attack +25%', 0]);
-  if (B.kind !== 'field' || B.rough) L.push([B.kind !== 'field' ? 'Assault' : 'Rough ground', 'cavalry −40%', 0]);
+  if (B.river && B.dugIn) L.push(['River crossing', `attack ${sgnPct(COMBAT.river)}`, 0]);
+  if (B.flank) L.push(['Flanking', `attack ${sgnPct(COMBAT.flank)}`, 0]);
+  if (B.kind !== 'field' || B.rough) L.push([B.kind !== 'field' ? 'Assault' : 'Rough ground', `cavalry ${sgnPct(COMBAT.cavRough)}`, 0]);
   // the elite units' own conditions
   const bio = MAP.biome[cellOf(B.x, B.y)];
   B.sides.forEach((S, si) => {
     const SG = sigOf(S.faction);
     if (S.faction < 0 || !S.armies.some((a) => a.comp.leg > 0)) return;
-    if (SG.home && SG.home.includes(bio)) L.push([`${SG.name} on home ground`, 'attack +25%', si]);
+    if (SG.home && SG.home.includes(bio)) L.push([`${SG.name} on home ground`, `attack ${sgnPct(COMBAT.home)}`, si]);
     if (si === 0 && B.kind !== 'field' && SG.assault) L.push([`${SG.name} storming walls`, `attack −${Math.round((1 - SG.assault) * 100)}%`, 0]);
     if (si === 0 && B.kind === 'field' && B.rough && SG.rough) L.push([`${SG.name} on rough ground`, `attack −${Math.round((1 - SG.rough) * 100)}%`, 0]);
   });
@@ -217,8 +217,8 @@ export function updateBattles(dt) {
       battleSetup(B);
     }
     B.t += dt;
-    while (B.t >= ROUND_T && !B.done) {
-      B.t -= ROUND_T;
+    while (B.t >= COMBAT.roundT && !B.done) {
+      B.t -= COMBAT.roundT;
       battleRound(B, rnd, true);
       if (B.place && B.place.militia != null && B.sides[1].militia) B.place.militia = B.sides[1].militia.men;
       const br0 = sideBroken(B.sides[0]), br1 = sideBroken(B.sides[1]);

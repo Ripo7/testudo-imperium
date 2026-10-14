@@ -105,7 +105,7 @@
       <h4>Goal</h4>
       <p>Hold <b>60% of the provinces</b>, or wipe out the three other powers. If you lose every major city, or a rival gets there first, you fall.</p>
       <p>A province is yours only while you hold <b>every place in it</b>: its major city, all its towns, and any <b>fort</b> finished inside it. Split between holders, it is <b>disputed</b> (hatched on the map, each part in its holder's colour): it counts for nobody. So an enemy fort, or one town still free, keeps a province from you.</p>
-      <p>Growth has a brake: past its fair share of the continent's settlements (a major city counts three times; 30% while four powers stand, more as powers fall) an empire is <b>overstretched</b> (income falls about 0.8% for every point above it, and conquered cities settle more slowly), and the other powers turn on whoever holds half of the provinces.</p>
+      <p>Growth has a brake: past its fair share of the continent's settlements (a major city counts three times; <span data-n="fair4">30%</span> while four powers stand, more as powers fall) an empire is <b>overstretched</b> (income falls about <span data-n="overRate">0.8%</span> for every point above it, and conquered cities settle more slowly), and the other powers turn on whoever holds half of the provinces.</p>
       <p>Wars are fought for provinces: a power goes to war more readily against a rival that holds part of a province it means to finish, and makes peace less readily with it. A power close to victory won't make peace with anyone behind it, nor will the one ahead when only two powers are left.</p>
       <h4>Keeping track</h4>
       <ul>
@@ -131,28 +131,28 @@
         <li>Wars <b>wear powers down</b>: battle losses, lost cities, hunger, unpaid troops, other fronts and simply time. A worn-out or losing power seeks peace, and pays <b>tribute</b> if the other side must be bought; a winning one demands tribute. The AI powers make peace with each other the same way.</li>
         <li>Click a rival in the standings to talk: <b>offer peace</b> (free, or for the tribute they ask), <b>renew a treaty</b>, or <b>declare war</b>. AI <b>envoys</b> come to you when they want peace.</li>
         <li>A peace <b>treaty binds for 2½ minutes</b>. The AI keeps its treaties. Break one and you are an <b>oath-breaker</b>: nobody will deal with you for 4 minutes.</li>
-        <li>Armies at war <b>plunder</b> enemy provinces they stand in (the owner loses 60% of that land's income) and live off the land (no extra food cost abroad).</li>
+        <li>Armies at war <b>plunder</b> enemy provinces they stand in (the owner loses <span data-n="plunder">60%</span> of that land's income) and live off the land (no extra food cost abroad).</li>
         <li>A freshly conquered city with low loyalty, no garrison and no temple may <b>revolt</b>, especially in an overstretched empire.</li>
       </ul>
       <p>Difficulty (chosen on the title screen): <b>Tiro</b> the AI earns 20% less and attacks later · <b>Legatus</b> an even fight · <b>Imperator</b> the AI earns 25% more and attacks sooner.</p>
       <h4>Economy</h4>
       <ul>
-        <li>A province's land produces plains and steppe → food, forests → wood, hills and mountains → stone. That income is <b>split between its settlements</b> (the major city takes the biggest slice, each town a smaller one), and goes to whoever holds each. Hold every settlement of a province and it yields <b>+12%</b>. The major city also colours the province on the map.</li>
+        <li>A province's land produces plains and steppe → food, forests → wood, hills and mountains → stone. That income is <b>split between its settlements</b> (the major city takes the biggest slice, each town a smaller one), and goes to whoever holds each. Hold every settlement of a province and it yields <b><span data-n="secure">+12%</span></b>. The major city also colours the province on the map.</li>
         <li>Every city produces gold plus a specialty. Armies eat food every second, more when they campaign outside your own land, and soldiers draw <b>pay in gold</b> (horses and elephants count twice). If food runs out armies starve; if gold runs out soldiers desert.</li>
         <li>Stone raises walls and forts and builds siege engines; wood feeds archers, siege engines and forts.</li>
-        <li><b>Market</b> (in your major cities): buy 100 food, wood or stone for 130 gold, or sell 100 for 70 (Carthage trades at 110 and 95).</li>
+        <li><b>Market</b> (in your major cities): buy 100 food, wood or stone for <span data-n="mBuy">130</span> gold, or sell 100 for <span data-n="mSell">70</span> (Carthage trades at <span data-n="cBuy">110</span> and <span data-n="cSell">95</span>).</li>
       </ul>
       <h4>Building</h4>
       <ul>
         <li>Select one of your cities to <b>recruit</b> troops (they muster beside the city) or <b>raise walls</b> (up to level 3). Walls multiply the militia's defense.</li>
-        <li><b>Improvements</b> (a major city has two slots, a town one): <b>Farmlands</b> +0.9 food/s · <b>Forum</b> +0.8 gold/s · <b>Barracks</b> recruit 30% faster and +70 militia · <b>Temple</b> loyalty returns 3× faster and half the overstretch penalty. An enemy who takes the city loots the last one.</li>
-        <li><b>Forts</b> are built in a province where you hold at least one place. Once finished, a fort is one more place to hold: an enemy must storm it to win the province, and a fort of yours in a rival's province keeps it disputed. Forts also block the road (enemies at war must storm them) and <b>guard the countryside</b>: enemy armies within 6 squares of a fort cannot plunder.</li>
+        <li><b>Improvements</b> (a major city has two slots, a town one): <b>Farmlands</b> <span data-n="farm">+0.9 food/s</span> · <b>Forum</b> <span data-n="forum">+0.8 gold/s</span> · <b>Barracks</b> <span data-n="barracks">recruits 30% faster here, militia +70</span> · <b>Temple</b> <span data-n="temple">order returns 3× faster; halves the overstretch penalty here</span>. An enemy who takes the city loots the last one.</li>
+        <li><b>Forts</b> are built in a province where you hold at least one place. Once finished, a fort is one more place to hold: an enemy must storm it to win the province, and a fort of yours in a rival's province keeps it disputed. Forts also block the road (enemies at war must storm them) and <b>guard the countryside</b>: enemy armies within <span data-n="guard">6</span> squares of a fort cannot plunder.</li>
       </ul>
       <h4>Battles: automatic, but decided by strategy</h4>
       <ul>
         <li><b>Retreat</b>: once the lines have met, an attacking or field army can pull out. It saves what is left, minus 6–40% to the pursuit (more if the enemy has cavalry, siege engines are half lost). Defenders cannot leave their walls.</li>
-        <li>Counters: spearmen ×1.9 vs cavalry · cavalry ×2 vs archers and siege, and ×1.8 on the charge · archers fire three volleys before the lines meet.</li>
-        <li>An army waiting in forest, hills or mountains defends better; attacking across a river is a −20% penalty; attacking from two sides is a +25% bonus.</li>
+        <li>Counters: spearmen <span data-n="vsSpearCav">×1.9</span> vs cavalry · cavalry <span data-n="vsCavArch">×2</span> vs archers and siege, and <span data-n="cavCharge">×1.8</span> on the charge · archers fire <span data-n="volleys">three volleys</span> before the lines meet.</li>
+        <li>An army waiting in forest, hills or mountains defends better; attacking across a river is a <span data-n="river">−20%</span> penalty; attacking from two sides is a <span data-n="flank">+25%</span> bonus.</li>
         <li><b>Stance:</b> Aggressive hits harder; Testudo (a defensive stance for the other powers) defends better and makes legionaries nearly immune to arrows.</li>
         <li>Every 2 siege engines remove one wall level during an assault. Cavalry is weak in assaults and rough ground.</li>
         <li>Armies that lose rout home; cavalry on the winning side cuts them down as they flee. Winning battles earns veteran stars.</li>

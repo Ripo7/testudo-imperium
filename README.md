@@ -39,6 +39,7 @@ Then open the address Vite prints (usually http://localhost:5173). Edits to the 
 | `npm test` | Lint, build, then run the test suite in headless Chromium |
 | `npm run balance -- 40` | Play 40 AI-vs-AI wars and report win rates, war length and economy |
 | `npm run audit -- 12` | Count how often every mechanic is used across 12 AI wars |
+| `node tools/params.js` | List the 250 balance parameters (`set id=value` writes `src/game/balance.js`, `diff` compares with git) |
 
 The browser tests need Chromium once: `npx playwright install chromium`.
 

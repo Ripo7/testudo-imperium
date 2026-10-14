@@ -31,7 +31,7 @@ const PROBES = [
   ['  const broke = R.lock > GS.time;\n', ` if (!R.war) {${A("'declare'", "broke ? 'breakingTreaty' : 'clean'")} (window.__audWars = window.__audWars || {})[pairKey(f, g)] = GS.time; }\n`],
   ['function makePeace(f, g, dur, payer, gold) {\n  const R = relOf(f, g);', ` if (R.war) {${A("'peace'", "payer != null && gold > 0 ? 'withTribute' : 'free'")} const t0 = (window.__audWars || {})[pairKey(f, g)]; if (t0 != null) (window.__audDur = window.__audDur || []).push(Math.round(GS.time - t0)); }`],
   ['    if (rnd() < revoltRisk(c, F)) { captureCity(c, NEUTRAL);', A("'revolt'")],
-  ['function showEnvoy(g, gold) {', A("'envoy'")],
+  ['export function sendEnvoy(g, gold) {', A("'envoy'")],
   ['export function recordProvince(P, prev) {', A("'province'", "P.owner >= 0 ? 'won' : P.owner === -2 ? 'disputed' : 'free'")],
   ['        orderTarget(a, bestKind, best);', A("'aiAttack'", 'bestKind')],
 ];

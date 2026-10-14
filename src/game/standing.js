@@ -1,5 +1,6 @@
 import { cellOf, GS, MAP } from './state.js';
 import { recordProvince } from './chronicle.js';
+import { ECON } from './data.js';
 
 /* =========================================================
    Standing: provinces, victory and the size of each empire
@@ -10,11 +11,10 @@ import { recordProvince } from './chronicle.js';
    and the overstretch penalty, not victory.
    ========================================================= */
 export const SET_W = (c) => (c.major ? 3 : 1);
-export const PROV_WIN = 0.6, SECURE = 1.12, OVER_RATE = 0.8, OVER_FLOOR = 0.6, OVER_SLOW = 3;
+export const PROV_WIN = 0.6;   // the land, overstretch and fair-share numbers: ECON (balance.js, economy)
 // an empire is overstretched past its fair share of the settlements: an even split between the powers still standing,
-// plus 5% (30% while all four stand, 38% with three, 55% with two), so the last powers are not all taxed alike
-export const FAIR = { extra: 0.05 };
-export const fairShare = () => 1 / Math.max(1, GS.factions.filter((F) => F.alive).length) + FAIR.extra;
+// plus ECON.fairExtra, 5% (30% while all four stand, 38% with three, 55% with two), so the last powers are not all taxed alike
+export const fairShare = () => 1 / Math.max(1, GS.factions.filter((F) => F.alive).length) + ECON.fairExtra;
 export const DISPUTED = -2;   // province owner: split between several holders (NEUTRAL, -1: every place is free)
 export let STAND = { total: 1, provinces: 1, need: 1 };
 // PROV.version changes whenever a place in any province changes hands (the map repaints then)
@@ -58,10 +58,10 @@ export function updateStanding() {
   for (const F of GS.factions) {
     F.share = F.pts / total;                     // the size of the empire: overstretch
     F.vshare = F.provs / STAND.provinces;        // the road to victory: the others turn on whoever leads it
-    F.stretch = Math.max(OVER_FLOOR, 1 - OVER_RATE * Math.max(0, F.share - fair));
+    F.stretch = Math.max(ECON.overFloor, 1 - ECON.overRate * Math.max(0, F.share - fair));
   }
   return changed;
 }
 export const provW = (P) => 3 + P.small.length;
-// held whole, forts included: its land yields SECURE
+// held whole, forts included: its land yields ECON.secure
 export const provSecure = (P) => P.owner >= 0;

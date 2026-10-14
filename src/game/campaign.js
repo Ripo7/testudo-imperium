@@ -1,7 +1,7 @@
 import { updateStanding } from './standing.js';
 import { emptyComp, GS, MAP, rndIn, seedRng, setMap } from './state.js';
 import { BIOME, generateMap, rng32 } from '../map/generate.js';
-import { FACTIONS, hasImp, NEUTRAL, PLAYER } from './data.js';
+import { BUILD, FACTIONS, hasImp, NEUTRAL, PLAYER } from './data.js';
 import { makeArmy } from './armies.js';
 import { fillStats } from './chronicle.js';
 import { relOf } from './diplomacy.js';
@@ -10,7 +10,7 @@ import { relOf } from './diplomacy.js';
    Campaign setup
    ========================================================= */
 export function militiaMaxOf(c) {
-  const base = (c.major ? 260 + c.walls * 150 : 100 + c.walls * 70) + (c.capital ? 300 : 0) + (hasImp(c, 'barracks') ? 70 : 0);
+  const base = (c.major ? 260 + c.walls * 150 : 100 + c.walls * 70) + (c.capital ? 300 : 0) + (hasImp(c, 'barracks') ? BUILD.barracks.militia : 0);
   return c.owner === NEUTRAL ? base * 2.2 : base;
 }
 export function computeProvYield(p) {

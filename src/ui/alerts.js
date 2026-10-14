@@ -2,7 +2,7 @@ import { atWar, relOf, revoltRisk, treatyOn } from '../game/diplomacy.js';
 import { knowsArmy } from '../game/sight.js';
 import { placesOf, STAND } from '../game/standing.js';
 import { GS, MAP, menOf } from '../game/state.js';
-import { FACTIONS, hasImp, PEACE_TIME } from '../game/data.js';
+import { ECON, FACTIONS, hasImp, PEACE_TIME, pctOff } from '../game/data.js';
 import { sideMen } from '../game/battles.js';
 import { plunderer } from '../game/economy.js';
 import { nearestCity } from '../game/armies.js';
@@ -61,7 +61,7 @@ export function computeAlerts(V) {
   let pl = 0;
   for (const p of new Set(mine.map((c) => c.prov))) {
     const a = plunderer(p, V);
-    if (a && pl++ < 2) add('warn', 'flame', `<b>${MAP.provinces[p].name}</b> plundered`, `by ${FACTIONS[a.owner].name}`, `prov:${p}`, 'Enemy troops loose in the province: its land income falls by 60%');
+    if (a && pl++ < 2) add('warn', 'flame', `<b>${MAP.provinces[p].name}</b> plundered`, `by ${FACTIONS[a.owner].name}`, `prov:${p}`, `Enemy troops loose in the province: its land income falls by ${pctOff(ECON.plunder)}`);
   }
   // food and gold
   const runway = (r) => (F.net[r] < -0.05 ? F.res[r] / -F.net[r] : Infinity);

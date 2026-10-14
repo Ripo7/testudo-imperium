@@ -8,7 +8,9 @@ import { CAM } from '../render/camera.js';
 import { VIEW } from '../render/terrain.js';
 import { buildFortMesh } from '../render/cities.js';
 import { crowd, CROWD_TYPES } from '../render/crowds.js';
-import { DIFFS, FACTIONS, othersOf, PLAYER, pName, setPlayer, SIG, VOICE } from '../game/data.js';
+import {
+  BUILD, COMBAT, DIFFS, ECON, FACTIONS, IMPS, MARKET, num, othersOf, pctOff, perkOf, PLAYER, pName, setPlayer, sgnPct, SIG, VOICE, VS,
+} from '../game/data.js';
 import { initCampaign } from '../game/campaign.js';
 import { resetPathfinder } from '../game/armies.js';
 import { $log, $panel, $tip, clearSel, setME, SPECT, stopPlacing, UI } from './state.js';
@@ -152,10 +154,27 @@ export function drawDiff() {
     + `<button data-fog class="fog${UI.fog ? ' on' : ''}" title="Enemy armies are hidden outside the sight of your cities, armies and forts">Fog of war: ${UI.fog ? 'on' : 'off'}</button>`
     + `<div class="dn">Difficulty when you play: ${DIFFS[UI.diff].note}${UI.fog ? ' Every power, the AI included, only sees what its cities, armies and forts can see.' : ''}</div>`;
 }
+// the numbers the help screen quotes (data-n in index.html), written from the current balance values
+export const HELP_NUMS = {
+  fair4: () => Math.round((0.25 + ECON.fairExtra) * 100) + '%',
+  overRate: () => num(ECON.overRate) + '%',
+  plunder: () => pctOff(ECON.plunder),
+  secure: () => sgnPct(ECON.secure),
+  mBuy: () => MARKET.buy, mSell: () => MARKET.sell, cBuy: () => perkOf(1).market.buy, cSell: () => perkOf(1).market.sell,
+  farm: () => IMPS.farm.desc, forum: () => IMPS.forum.desc, barracks: () => IMPS.barracks.desc, temple: () => IMPS.temple.desc,
+  guard: () => num(BUILD.fort.guard),
+  vsSpearCav: () => '×' + num(VS.spear.cav), vsCavArch: () => '×' + num(VS.cav.arch), cavCharge: () => '×' + num(COMBAT.cavCharge),
+  volleys: () => `${['no', 'one', 'two', 'three', 'four', 'five'][COMBAT.rr] || COMBAT.rr} volley${COMBAT.rr === 1 ? '' : 's'}`,
+  river: () => sgnPct(COMBAT.river), flank: () => sgnPct(COMBAT.flank),
+};
+export function drawHelp() {
+  $('eliteHelp').innerHTML = FACTIONS.map((F, i) => `<li><b>${F.name}</b> · ${F.perk.name}: ${F.perk.desc} Elite unit, <b>${SIG[i].name}</b>: ${SIG[i].desc.replace(/^\w+ only\. /, '')}</li>`).join('');
+  for (const el of screens.help.querySelectorAll('[data-n]')) { const f = HELP_NUMS[el.dataset.n]; if (f) el.textContent = f(); }
+}
 // Start-up wiring, run once from main.js after every module has loaded.
 export function initScreens() {
   setMuteIcon();
-  $('eliteHelp').innerHTML = FACTIONS.map((F, i) => `<li><b>${F.name}</b> · ${F.perk.name}: ${F.perk.desc} Elite unit, <b>${SIG[i].name}</b>: ${SIG[i].desc.replace(/^\w+ only\. /, '')}</li>`).join('');
+  drawHelp();
   UI.pick = store.get('testudo.faction', 0);
   drawPowers();
   $('powers').addEventListener('click', (e) => { const b = e.target.closest('[data-pick]'); if (!b) return; UI.pick = +b.dataset.pick; store.set('testudo.faction', UI.pick); Sfx.click(); drawPowers(); showTitle(); });
@@ -219,9 +238,9 @@ export function initScreens() {
   rep.addEventListener('pointerdown', (e) => { hover(e); if (!(e.target.closest && e.target.closest('svg.ch'))) rep.querySelectorAll('svg.ch').forEach(chartLeave); });
   rep.addEventListener('pointerout', (e) => { const svg = e.target.closest && e.target.closest('svg.ch'); if (svg && e.pointerType === 'mouse' && !svg.contains(e.relatedTarget)) chartLeave(svg); });
   window.addEventListener('resize', () => { if (!screens.over.classList.contains('hidden')) renderReport(); });
-  $('btnHelp').addEventListener('click', () => { UI.helpFrom = null; $('helpClose').textContent = 'Back to the map'; UI.helpSpeed = GS.speed; GS.speed = 0; showScreen('help'); });
+  $('btnHelp').addEventListener('click', () => { drawHelp(); UI.helpFrom = null; $('helpClose').textContent = 'Back to the map'; UI.helpSpeed = GS.speed; GS.speed = 0; showScreen('help'); });
   // from the pause menu (phones keep help and sound there), the help goes back to the menu
-  $('menuHelp').addEventListener('click', () => { Sfx.click(); UI.helpFrom = 'menu'; $('helpClose').textContent = 'Back to the menu'; showScreen('help'); screens.help.scrollTop = 0; });
+  $('menuHelp').addEventListener('click', () => { drawHelp(); Sfx.click(); UI.helpFrom = 'menu'; $('helpClose').textContent = 'Back to the menu'; showScreen('help'); screens.help.scrollTop = 0; });
   $('menuMute').addEventListener('click', () => { Sfx.init(); Sfx.toggle(); setMuteIcon(); });
   $('helpClose').addEventListener('click', () => { if (UI.helpFrom === 'menu') { UI.helpFrom = null; showScreen('menu'); return; } showScreen(null); if (!GS.over) GS.speed = UI.helpSpeed || 1; });
   $('btnMenu').addEventListener('click', openMenu);
