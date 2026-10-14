@@ -5,6 +5,8 @@ Real-time strategy in the browser. Rome, Carthage, the Gauls and Egypt fight ove
 ![A campaign in progress](docs/screenshot-campaign.jpg)
 
 - **Four powers, each with its own elite unit and speciality**: Roman legionaries and engineering, Punic war elephants and merchants, Gallic gaesatae and tribal levies, Egyptian chariots and the gift of the Nile.
+- **Terrain matters on the march**: armies go twice as fast on roads, slowly through forests and very slowly over mountains, and wide rivers can only be crossed on a bridge (narrow streams can be waded).
+- **Fog of war**: enemy armies are hidden outside the sight of your cities, armies and forts; cavalry and high ground see further.
 - **Battles decided by strategy**: terrain, rivers, walls, flanks, stance and the odds you accept. Retreat when a battle turns.
 - **An economy of land and cities**: provinces share their land income between settlements, cities take improvements (farmlands, forum, barracks, temple), soldiers draw pay, and conquered cities can revolt.
 - **War and peace**: powers stay at peace until one declares war. Wars wear both sides down until they sign a treaty, with tribute paid by the loser.
@@ -45,11 +47,13 @@ src/
   styles/main.css     all the UI styling (colour tokens at the top)
   assets/fonts/       Marcellus and Alegreya Sans
   core/               helpers, synthesized audio
-  map/generate.js     the continent: relief, biomes, rivers, provinces, cities (pure JS)
+  map/generate.js     the continent: relief, biomes, rivers, provinces, cities, roads,
+                      bridges, fords and the marching cost of every cell (pure JS)
   render/             everything drawn in 3D: terrain, water, vegetation, cities,
                       soldiers (instanced crowds), overlays, camera, light and clouds
-  game/               the simulation: factions and units (data.js), armies, battles,
-                      economy, standing and victory, diplomacy, AI, save & resume
+  game/               the simulation: factions and units (data.js), armies and pathfinding,
+                      battles, economy, standing and victory, diplomacy, AI, fog of war
+                      (sight.js), save & resume
   ui/                 panels, HUD, map labels, input, screens, the autoplay camera
 tests/                Node and browser tests (npm test)
 tools/                balance and audit scripts
@@ -91,6 +95,7 @@ The game is a static site, so any static host works too (Netlify, Cloudflare Pag
 
 - Sound effects draw from `Math.random`, the same generator the AI uses, so a game only replays identically with sound off (the determinism test mutes it). Giving the simulation its own seeded generator would fix that and allow replays.
 - The AI almost never attacks from two sides, so flanking is mostly a player tactic.
+- The AI isn't limited by the fog of war: it sees the whole map.
 
 ## Credits and licence
 

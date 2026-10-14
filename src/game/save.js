@@ -6,6 +6,7 @@ import { CAM } from '../render/camera.js';
 import { VIEW } from '../render/terrain.js';
 import { FACTIONS, PEACE_TIME, PLAYER } from './data.js';
 import { initCampaign } from './campaign.js';
+import { findPath } from './armies.js';
 import { setME, SPECT, UI } from '../ui/state.js';
 import { renderPanel } from '../ui/panel.js';
 import { log, updateHUD } from '../ui/hud.js';
@@ -18,6 +19,7 @@ import { togglePolitical } from '../ui/director.js';
    a campaign is stored, with objects referenced by id.
    ========================================================= */
 export const SAVE_KEY = 'testudo.save.v1';
+export const MOVE_RULES = 2;   // 2: roads, bridges and fords
 export const clockStr = (t) => { const s = Math.floor(t); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 export function mapPrint() { return [MAP.W, MAP.H, MAP.provinces.length, MAP.cities.length, MAP.landCount].join('x'); }
 export function canResume() { return !!MAP && GS.factions.length > 0 && !UI.fresh && !GS.over; }
@@ -29,9 +31,9 @@ export function serializeGame() {
     return T.ref.dead ? null : { k: T.kind, id: T.ref.id };
   };
   return {
-    v: 1, seed: MAP.seed, print: mapPrint(), at: Date.now(),
+    v: 1, mv: MOVE_RULES, seed: MAP.seed, print: mapPrint(), at: Date.now(),
     gs: {
-      time: GS.time, auto: GS.auto, rel: GS.rel, diff: GS.diff, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT,
+      time: GS.time, auto: GS.auto, rel: GS.rel, diff: GS.diff, fog: !!GS.fog, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT,
       speed: playing ? (GS.speed || UI.menuSpeed || UI.helpSpeed || UI.lastSpeed || 1) : (UI.resumeSpeed || 1),
     },
     factions: GS.factions.map((F) => ({ res: F.res, inc: F.inc, upk: F.upk, net: F.net, alive: F.alive, starving: F.starving, unpaid: F.unpaid, aiT: F.aiT, eliminatedAt: F.eliminatedAt, provoked: F.provoked, oath: F.oath, noDealT: F.noDealT })),
@@ -54,7 +56,7 @@ export function restoreGame(S) {
   initCampaign(S.seed);
   if (mapPrint() !== S.print || S.cities.length !== MAP.cities.length) throw new Error('This save belongs to a different map.');
   const g = S.gs;
-  Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: g.fstats, checkT: g.checkT || 1, armies: [], forts: [], battles: [], over: null });
+  Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, fog: !!g.fog, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: g.fstats, checkT: g.checkT || 1, armies: [], forts: [], battles: [], over: null });
   setME(GS.auto ? SPECT : PLAYER);
   S.factions.forEach((d, i) => Object.assign(GS.factions[i], d));
   GS.factions[PLAYER].isPlayer = !GS.auto;
@@ -98,6 +100,8 @@ export function restoreGame(S) {
     GS.battles.push(B);
   }
   for (const a of GS.armies) if (a.state === 'battle' && !a.battle) a.state = 'idle';
+  // saves from before roads, bridges and fords: re-plan marches, which may cross rivers that are now closed
+  if ((S.mv || 1) < MOVE_RULES) for (const a of GS.armies) if (a.path && a.path.length) { const end = a.path[a.path.length - 1]; a.path = findPath(a.x, a.y, end % MAP.W, (end / MAP.W) | 0, a.owner); a.pi = 0; if (!a.path && a.state === 'move') a.state = 'idle'; }
   UI.resumeSpeed = g.speed || 1;
   UI.resumeView = S.view ? { x: S.view.x, z: S.view.z, d: S.view.d } : null;
   UI.resumePolitical = S.view ? !!S.view.pol : false;

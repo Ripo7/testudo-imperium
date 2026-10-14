@@ -1,3 +1,4 @@
+import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
 import { GS, MAP, menOf, starsOf } from '../game/state.js';
 import { $, clamp } from '../core/util.js';
 import { cellToWorld } from '../render/world.js';
@@ -47,7 +48,7 @@ export function updateLabels() {
     if (!c.major && !showSmall) { if (L.last.vis !== false) { L.el.style.display = 'none'; L.last.vis = false; } continue; }
     if (!placeLabel(L, c.x, c.y, c.major ? 1.6 : 0.9, -2)) continue;
     const sieged = c.battle && !c.battle.done;
-    const html = `${c.capital ? '<span class="crown">★</span>' : ''}${c.name}${c.walls ? ` <span class="w">${'▮'.repeat(c.walls)}</span>` : ''}${showMil ? ` <span class="mil">${fmt(c.militia)}</span>` : ''}`;
+    const html = `${c.capital ? '<span class="crown">★</span>' : ''}${c.name}${c.walls ? ` <span class="w">${'▮'.repeat(c.walls)}</span>` : ''}${showMil && seesCity(c) ? ` <span class="mil">${fmt(c.militia)}</span>` : ''}`;
     setHtml(L, 'h', html);
     setStyle(L, 'bc', 'borderLeftColor', fcss(c.owner));
     const cls = 'lb ct' + (c.major ? ' major' : '') + (sieged ? ' siege' : '');
@@ -62,7 +63,7 @@ export function updateLabels() {
     let L = LBL.army.get(a.id);
     if (!L) { L = mkLabel('ar', ''); LBL.army.set(a.id, L); }
     projectCell(a.x, a.y, 0.75, _pp);
-    const vis = _pp.vis && _pp.x > -80 && _pp.x < W + 80 && _pp.y > -40 && _pp.y < H + 40;
+    const vis = _pp.vis && _pp.x > -80 && _pp.x < W + 80 && _pp.y > -40 && _pp.y < H + 40 && seesArmy(a);
     if (!vis) { if (L.last.vis !== false) { L.el.style.display = 'none'; L.last.vis = false; } continue; }
     const st = starsOf(a);
     const html = `<i class="fl" style="background:${FACTIONS[a.owner].css}"></i>${fmt(menOf(a.comp))}${a.comp.siege >= 1 ? ` <span class="tt">+${Math.floor(a.comp.siege)}⚙</span>` : ''}${st ? ` <span class="st">${'★'.repeat(st)}</span>` : ''}${a.stance === 'def' ? ' <span class="tt">🛡</span>' : ''}${a.state === 'rout' ? ' <span class="tt">routing</span>' : ''}`;
@@ -91,6 +92,7 @@ export function updateLabels() {
     seenB.add(B.id);
     let L = LBL.battle.get(B.id);
     if (!L) { L = mkLabel('bt', ''); LBL.battle.set(B.id, L); }
+    if (!seesBattle(B)) { if (L.last.vis !== false) { L.el.style.display = 'none'; L.last.vis = false; } continue; }
     if (!placeLabel(L, B.x, B.y, 1.6, -22)) continue;
     const m0 = sideMen(B.sides[0]), m1 = sideMen(B.sides[1]), tot = Math.max(1, m0 + m1);
     setHtml(L, 'h', `⚔ ${fmt(m0)} <span class="bar"><i style="width:${(m0 / tot * 100).toFixed(0)}%;background:${fcss(B.sides[0].faction)}"></i><i style="width:${(m1 / tot * 100).toFixed(0)}%;background:${fcss(B.sides[1].faction)}"></i></span> ${fmt(m1)}`);

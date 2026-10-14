@@ -1,3 +1,5 @@
+import { fogActive, seesBattle, SIGHT, updateSight } from './game/sight.js';
+import { initAtmosphere, updateFogTexture } from './render/atmosphere.js';
 import { GS } from './game/state.js';
 import { Sfx } from './core/audio.js';
 import { camera, renderer, scene } from './render/renderer.js';
@@ -7,17 +9,13 @@ import { CAM, projectCell, updateCameraRig } from './render/camera.js';
 import { buildCrowdGeos, updateCrowds } from './render/crowds.js';
 import { simStep } from './game/sim.js';
 import { _pp, UI } from './ui/state.js';
-import { renderPanel } from './ui/panel.js';
+import { initPanel, renderPanel } from './ui/panel.js';
 import { defaultHint, updateHUD, updateLog } from './ui/hud.js';
 import { $labels, updateLabels, updateSelectionVisuals } from './ui/labels.js';
 import { keyboardPan } from './ui/input.js';
-import { prepareCampaign } from './ui/screens.js';
+import { initScreens, prepareCampaign } from './ui/screens.js';
 import { clearSave, loadSave, resumeCampaign, saveGame, showTitle } from './game/save.js';
 import { updateDirector } from './ui/director.js';
-
-import { initAtmosphere } from './render/atmosphere.js';
-import { initPanel } from './ui/panel.js';
-import { initScreens } from './ui/screens.js';
 
 /* =========================================================
    Boot & loop
@@ -63,16 +61,17 @@ function frame(now) {
   UI.t += rdt * (GS.speed > 0 || UI.mode !== 'play' ? 1 : 0.15);
   updateCrowds(UI.t);
   updateDust(rdt);
+  if (UI.mode !== 'play' || !fogActive() !== !SIGHT.on) { updateSight(); updateFogTexture(); }
   if (UI.mode === 'play') {
     updateSelectionVisuals();
     UI.hudT -= rdt;
-    if (UI.hudT <= 0) { UI.hudT = 0.25; updateHUD(); renderPanel(false); updateLog(); defaultHint(); }
+    if (UI.hudT <= 0) { UI.hudT = 0.25; updateSight(); updateFogTexture(); updateHUD(); renderPanel(false); updateLog(); defaultHint(); }
     saveT -= rdt;
     if (saveT <= 0) { saveT = 15; saveGame(); }
     battleSoundT -= rdt;
     if (battleSoundT <= 0 && GS.speed > 0) {
       battleSoundT = 0.35;
-      const vis = GS.battles.some((B) => !B.done && projectCell(B.x, B.y, 0, _pp).vis && _pp.x > 0 && _pp.x < window.innerWidth && _pp.y > 0 && _pp.y < window.innerHeight);
+      const vis = GS.battles.some((B) => !B.done && seesBattle(B) && projectCell(B.x, B.y, 0, _pp).vis && _pp.x > 0 && _pp.x < window.innerWidth && _pp.y > 0 && _pp.y < window.innerHeight);
       if (vis && CAM.d < 110) { if (Math.random() < 0.5) Sfx.clang(); else Sfx.hit(); }
     }
   }

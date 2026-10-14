@@ -57,6 +57,7 @@ export function startCampaign(auto) {
   UI.mode = 'play'; UI.fresh = false;
   GS.speed = auto ? 2 : 1; UI.lastSpeed = GS.speed;
   GS.diff = auto ? 1 : (UI.diff == null ? 1 : UI.diff);
+  GS.fog = !auto && UI.fog !== false;
   $('hud').classList.remove('hidden');
   showScreen(null);
   setAuto(auto);
@@ -134,7 +135,9 @@ export function setMuteIcon() {
     : '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>';
 }
 export function drawDiff() {
-  $('diffSel').innerHTML = DIFFS.map((d, i) => `<button data-d="${i}" class="${i === UI.diff ? 'on' : ''}" title="${d.note}">${d.name}</button>`).join('') + `<div class="dn">Difficulty when you play Rome: ${DIFFS[UI.diff].note}</div>`;
+  $('diffSel').innerHTML = DIFFS.map((d, i) => `<button data-d="${i}" class="${i === UI.diff ? 'on' : ''}" title="${d.note}">${d.name}</button>`).join('')
+    + `<button data-fog class="fog${UI.fog ? ' on' : ''}" title="Enemy armies are hidden outside the sight of your cities, armies and forts">Fog of war: ${UI.fog ? 'on' : 'off'}</button>`
+    + `<div class="dn">Difficulty when you play Rome: ${DIFFS[UI.diff].note}${UI.fog ? ' Enemy armies are hidden outside your sight.' : ''}</div>`;
 }
 // Start-up wiring, run once from main.js after every module has loaded.
 export function initScreens() {
@@ -142,7 +145,12 @@ export function initScreens() {
   $('eliteHelp').innerHTML = FACTIONS.map((F, i) => `<li><b>${F.name}</b> · ${F.perk.name}: ${F.perk.desc} Elite unit, <b>${SIG[i].name}</b>: ${SIG[i].desc.replace(/^\w+ only\. /, '')}</li>`).join('');
   $('powers').innerHTML = FACTIONS.map((F, i) => `<div class="power" style="--fc:${F.css}" title="${F.perk.name}: ${F.perk.desc} ${SIG[i].desc}"><i></i>${F.name}<small>${SIG[i].name}<br>${F.perk.name}</small></div>`).join('');
   UI.diff = store.get('testudo.diff', 1);
-  $('diffSel').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (b) { UI.diff = +b.dataset.d; store.set('testudo.diff', UI.diff); Sfx.click(); drawDiff(); } });
+  UI.fog = store.get('testudo.fog', true);
+  $('diffSel').addEventListener('click', (e) => {
+    const f = e.target.closest('[data-fog]');
+    if (f) { UI.fog = !UI.fog; store.set('testudo.fog', UI.fog); Sfx.click(); drawDiff(); return; }
+    const b = e.target.closest('[data-d]'); if (b) { UI.diff = +b.dataset.d; store.set('testudo.diff', UI.diff); Sfx.click(); drawDiff(); }
+  });
   drawDiff();
   $('startBtn').addEventListener('click', () => { if (UI.fresh) startCampaign(false); else newCampaign(false); });
   $('autoBtn').addEventListener('click', () => { if (UI.fresh) startCampaign(true); else newCampaign(true); });

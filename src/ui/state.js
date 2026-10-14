@@ -1,3 +1,4 @@
+import { seesArmy, seesBattle } from '../game/sight.js';
 import { canAfford, cellOf, GS, MAP } from '../game/state.js';
 import { $, clamp } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
@@ -60,8 +61,8 @@ export function hitTest(sx, sy) {
     if (d < r && d < bd) { bd = d; best = { kind, ref }; }
   };
   const zoomK = clamp(70 / CAM.d, 0.6, 3);
-  for (const B of GS.battles) if (!B.done) consider('battle', B, B.x, B.y, 1.2, 26);
-  for (const a of GS.armies) if (!a.dead) consider('army', a, a.x, a.y, 0.3, Math.max(20, 22 * zoomK));
+  for (const B of GS.battles) if (!B.done && seesBattle(B)) consider('battle', B, B.x, B.y, 1.2, 26);
+  for (const a of GS.armies) if (!a.dead && seesArmy(a)) consider('army', a, a.x, a.y, 0.3, Math.max(20, 22 * zoomK));
   if (best) return best;
   for (const c of MAP.cities) consider('city', c, c.x, c.y, 0.3, c.major ? Math.max(24, 30 * zoomK) : Math.max(14, 18 * zoomK));
   for (const f of GS.forts) if (!f.dead) consider('fort', f, f.x, f.y, 0.3, Math.max(14, 16 * zoomK));
@@ -77,7 +78,7 @@ export function stationSpot(c, k) {
   const offs = [[1.5, 1.3], [-1.5, 1.3], [1.5, -1.3], [-1.5, -1.3], [0, 2], [2, 0], [0, -2], [-2, 0]];
   for (let i = 0; i < offs.length; i++) {
     const [dx, dy] = offs[(k + i) % offs.length];
-    if (MAP.cost[cellOf(c.x + dx, c.y + dy)] < Infinity) return { x: c.x + dx, y: c.y + dy };
+    if (MAP.move[cellOf(c.x + dx, c.y + dy)] < Infinity) return { x: c.x + dx, y: c.y + dy };
   }
   return { x: c.x, y: c.y };
 }
@@ -100,7 +101,7 @@ export function issueOrder(h, cell) {
     }
   });
   if (any) { if (hostile) Sfx.horn(); else Sfx.click(); }
-  else { Sfx.deny(); flashHint('No path there.'); }
+  else { Sfx.deny(); flashHint('No way there: wide rivers need a bridge or a ford, and the high peaks can\'t be crossed.'); }
   renderPanel(true);
   return any;
 }

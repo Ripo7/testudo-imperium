@@ -99,7 +99,7 @@ export const DIFFS = [
   { name: 'Imperator', note: 'The AI earns 25% more and strikes sooner.', inc: 1.25, need: -0.07, tick: 1.8 },
 ];
 export const diffOf = () => (GS.auto ? DIFFS[1] : DIFFS[GS.diff == null ? 1 : GS.diff]);
-export const K_DMG = 0.075, ROUND_T = 0.55, BASE_SPEED = 0.9, LOYAL_TIME = 150, PEACE_TIME = 240;
+export const K_DMG = 0.075, ROUND_T = 0.55, BASE_SPEED = 0.8, LOYAL_TIME = 150, PEACE_TIME = 240;
 // Settlement points: a major city counts 3, a town 1. Victory, the empire's size and the land income all go by these.
 export const GANG_AT = 0.36, PACT_TIME = 180, TREATY_TIME = 150, OATH_TIME = 240, PEACE_WILL = 0.3, TRIBUTE_FLOOR = -0.1;
 export const FORT_GUARD = 6, PLUNDER = 0.4, REVOLT_RATE = 0.012;

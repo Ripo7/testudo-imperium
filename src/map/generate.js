@@ -386,5 +386,138 @@ export function generateMap(seed) {
     c.near = { forest: t[BIOME.FOREST], hills: t[BIOME.HILLS] + t[BIOME.MOUNTAIN] * 1.5, fertile: t[BIOME.PLAINS] + t[BIOME.STEPPE] * 0.5 + rv, coast, river: rv, desert: t[BIOME.DESERT] };
   }
 
-  return { W, H, seed, elev, moist, temp, biome, river, rivers, cost, prov, provinces, cities, ocean, landCount, eHill, eMount, eSnow };
+  // --- roads between neighbouring cities, and how long armies take to cross each cell
+  const roads = buildRoads(W, H, cost, cities, provinces);
+  const road = new Uint8Array(N), bridge = new Uint8Array(N);
+  for (const R of roads) for (const n of R.cells) { road[n] = 1; if (river[n] && elev[n] >= 0) bridge[n] = 1; }
+  const { move, ford } = movementCost(W, H, biome, river, elev, road, cities);
+
+  return { W, H, seed, elev, moist, temp, biome, river, rivers, cost, prov, provinces, cities, ocean, landCount, eHill, eMount, eSnow, roads, road, bridge, move, ford };
+}
+
+/* ---------- roads: A* between neighbouring cities, sharing segments ----------
+   Roads are laid out over the builders' terrain cost (cost), where rivers are
+   only expensive: wherever a road meets a river, it crosses on a bridge. */
+export function roadPath(W, H, cost, a, b, onRoad) {
+  const N = W * H, g = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+  const s = a.cell, t = b.cell, tx = b.x, ty = b.y;
+  const hp = new Heap();
+  g[s] = 0; hp.push(0, s);
+  while (hp.size) {
+    const cur = hp.pop();
+    if (cur === t) break;
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    const cx = cur % W, cy = (cur / W) | 0;
+    for (const [dx, dy] of N8) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const n = ny * W + nx;
+      let c = cost[n];
+      if (!(c < Infinity)) continue;
+      if (dx && dy && (!(cost[cy * W + nx] < Infinity) || !(cost[ny * W + cx] < Infinity))) continue;
+      c = Math.pow(c, 1.6) * (onRoad[n] ? 0.35 : 1) * (dx && dy ? 1.414 : 1);
+      const ng = g[cur] + c;
+      if (ng < g[n]) { g[n] = ng; came[n] = cur; hp.push(ng + Math.hypot(nx - tx, ny - ty) * 0.35, n); }
+    }
+  }
+  if (came[t] < 0) return null;
+  const path = [t]; let c = t;
+  while (c !== s) { c = came[c]; path.push(c); }
+  return path.reverse();
+}
+// which cities are linked: a few nearest neighbours, and every town to its province capital
+export function buildRoads(W, H, cost, cities, provinces) {
+  const pairs = new Set(), list = [];
+  const addPair = (a, b) => { const k = Math.min(a.id, b.id) + ':' + Math.max(a.id, b.id); if (!pairs.has(k) && a !== b) { pairs.add(k); list.push([a, b, Math.hypot(a.x - b.x, a.y - b.y)]); } };
+  for (const c of cities) {
+    const near = cities.filter((o) => o !== c).map((o) => [o, Math.hypot(o.x - c.x, o.y - c.y)]).sort((p, q) => p[1] - q[1]);
+    const k = c.major ? 3 : 2;
+    for (let i = 0; i < Math.min(k, near.length); i++) if (near[i][1] < 17) addPair(c, near[i][0]);
+    if (!c.major) addPair(c, cities[provinces[c.prov].major]);
+  }
+  list.sort((p, q) => p[2] - q[2]);
+  const onRoad = new Uint8Array(W * H);
+  const roads = [];
+  for (const [a, b] of list) {
+    const path = roadPath(W, H, cost, a, b, onRoad);
+    if (!path || path.length < 3) continue;
+    // skip a road that would just duplicate an existing one end to end
+    let fresh = 0; for (const n of path) if (!onRoad[n]) fresh++;
+    if (fresh < 3) continue;
+    for (const n of path) onRoad[n] = 1;
+    roads.push({ a: a.id, b: b.id, cells: path });
+  }
+  return roads;
+}
+
+/* ---------- marching ----------
+   move[i]: seconds-per-cell multiplier for an army crossing cell i (1 = open plains).
+   Roads are twice as fast, a little less over hills and passes. Forests and hills are slow,
+   mountains very slow, the high peaks impassable except where a road crosses a pass.
+   Rivers can only be crossed on a bridge, or waded at a ford on their narrow upper course. */
+export const MOVE = { road: 0.5, roadClimb: 0.15, ford: 3, fordWidth: 1 };
+export const TERRAIN_MOVE = [Infinity, Infinity, 1.1, 1, 1, 2.2, 1.4, 1.8, 4.5, Infinity, Infinity];   // by BIOME index
+export function movementCost(W, H, biome, river, elev, road, cities) {
+  const N = W * H, move = new Float32Array(N), ford = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    const b = biome[i];
+    let c = TERRAIN_MOVE[b];
+    const water = b <= BIOME.SEA || b === BIOME.LAKE;
+    const wet = river[i] && elev[i] >= 0;
+    if (road[i] && !water) c = MOVE.road + MOVE.roadClimb * (Math.min(b === BIOME.SNOW ? 7 : c, 7) - 1);
+    else if (wet && c < Infinity) { if (river[i] <= MOVE.fordWidth) { c += MOVE.ford; ford[i] = 1; } else c = Infinity; }
+    move[i] = c;
+  }
+  // every city must stay reachable: where a wide river or a range of peaks cuts some cities off,
+  // open the cheapest crossing (a ford, or a mountain path)
+  const label = new Int32Array(N);
+  const ok = (i) => move[i] < Infinity;
+  for (let guard = 0; guard < 40; guard++) {
+    label.fill(-1);
+    let comps = 0;
+    const size = [];
+    for (let i = 0; i < N; i++) {
+      if (!ok(i) || label[i] >= 0) continue;
+      const q = [i]; label[i] = comps;
+      for (let h = 0; h < q.length; h++) {
+        const c = q[h], cx = c % W, cy = (c / W) | 0;
+        for (const [dx, dy] of N8) {
+          const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const n = ny * W + nx;
+          if (label[n] < 0 && ok(n) && (!dx || !dy || (ok(cy * W + nx) && ok(ny * W + cx)))) { label[n] = comps; q.push(n); }
+        }
+      }
+      size.push(0); comps++;
+    }
+    for (const c of cities) size[label[c.cell]]++;
+    const main = size.indexOf(Math.max(...size));
+    const cut = cities.find((c) => label[c.cell] !== main);
+    if (!cut) break;
+    // cheapest way from the cut-off city's area to the main area, through blocked land (not the sea)
+    const g = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), hp = new Heap();
+    const from = label[cut.cell];
+    for (let i = 0; i < N; i++) if (label[i] === from) { g[i] = 0; hp.push(0, i); }
+    let reached = -1;
+    while (hp.size) {
+      const d0 = hp.peekKey(), c = hp.pop();
+      if (d0 > g[c]) continue;
+      if (label[c] === main) { reached = c; break; }
+      const cx = c % W, cy = (c / W) | 0;
+      for (const [dx, dy] of N4) {
+        const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const n = ny * W + nx, b = biome[n];
+        if (b <= BIOME.SEA || b === BIOME.LAKE) continue;
+        const nd = d0 + (ok(n) ? move[n] : b === BIOME.SNOW ? 12 : 8);
+        if (nd < g[n]) { g[n] = nd; came[n] = c; hp.push(nd, n); }
+      }
+    }
+    if (reached < 0) break;   // separated by the sea: nothing to do
+    for (let c = reached; c >= 0 && label[c] !== from; c = came[c]) {
+      if (ok(c)) continue;
+      if (biome[c] === BIOME.SNOW) move[c] = 7;
+      else { move[c] = TERRAIN_MOVE[biome[c]] < Infinity ? TERRAIN_MOVE[biome[c]] + MOVE.ford : 1 + MOVE.ford; ford[c] = 1; }
+    }
+  }
+  return { move, ford };
 }

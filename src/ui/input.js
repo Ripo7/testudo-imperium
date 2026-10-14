@@ -1,3 +1,5 @@
+import { seesCity } from '../game/sight.js';
+import { groundInfo } from '../game/armies.js';
 import { THREE } from '../three.js';
 import { GS, MAP, menOf, ownerName } from '../game/state.js';
 import { _v2, clamp, lerp } from '../core/util.js';
@@ -112,15 +114,19 @@ export function hover(sx, sy) {
   let tip = '';
   const arms = myOrderables();
   if (h && h.kind !== 'prov') {
-    if (arms.length && ((h.kind === 'army' && h.ref.owner !== ME) || ((h.kind === 'city' || h.kind === 'fort') && h.ref.owner !== ME))) {
+    if (arms.length && h.kind === 'city' && h.ref.owner !== ME && !seesCity(h.ref)) tip = `<b>${h.ref.name}</b> · ${ownerName(h.ref.owner)}<br>Out of sight: defenders unknown<br>Right-click to attack anyway`;
+    else if (arms.length && ((h.kind === 'army' && h.ref.owner !== ME) || ((h.kind === 'city' || h.kind === 'fort') && h.ref.owner !== ME))) {
       const o = attackPreview(h);
       const [w] = oddsWord(o.p);
       tip = `<b>Right-click to attack</b><br>${Math.round(o.p * 100)}% — ${w} · losses ≈ ${fmtInt(o.attLoss)}`;
       if (o.mods.length) tip += '<br>' + o.mods.map(([n, e2]) => `${n}: ${e2}`).join('<br>');
-    } else if (h.kind === 'city') tip = `<b>${h.ref.name}</b> · ${ownerName(h.ref.owner)}<br>militia ${fmtInt(h.ref.militia)} · walls ${h.ref.walls}`;
+    } else if (h.kind === 'city') tip = `<b>${h.ref.name}</b> · ${ownerName(h.ref.owner)}<br>${seesCity(h.ref) ? `militia ${fmtInt(h.ref.militia)} · ` : 'defenders unknown · '}walls ${h.ref.walls}`;
     else if (h.kind === 'army') tip = `<b>${h.ref.owner === ME ? 'Roman' : FACTIONS[h.ref.owner].adj} army</b> · ${fmtInt(menOf(h.ref.comp))} men${arms.length && h.ref.owner === ME && !UI.sel.includes(h.ref) ? '<br>Right-click to merge' : ''}`;
     canvas.style.cursor = 'pointer';
-  } else canvas.style.cursor = arms.length ? 'crosshair' : 'default';
+  } else {
+    canvas.style.cursor = arms.length ? 'crosshair' : 'default';
+    if (arms.length && h && h.cell) { const g = groundInfo(h.cell.x, h.cell.y); tip = `<b>${g.name}</b> · ${g.pace}`; }
+  }
   if (tip) { $tip.innerHTML = tip; $tip.classList.remove('hidden'); $tip.style.left = Math.min(sx + 16, window.innerWidth - 270) + 'px'; $tip.style.top = (sy + 16) + 'px'; }
   else $tip.classList.add('hidden');
 }

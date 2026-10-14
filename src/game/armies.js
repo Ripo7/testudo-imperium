@@ -1,7 +1,7 @@
 import { atPeace } from './diplomacy.js';
 import { cellOf, dist, emptyComp, GS, MAP, menOf } from './state.js';
 import { clamp, dampAngle } from '../core/util.js';
-import { Heap, N8 } from '../map/generate.js';
+import { BIOME, BIOME_NAME, Heap, MOVE, N8 } from '../map/generate.js';
 import { BASE_SPEED, PLAYER, sigOf, TYPES5 } from './data.js';
 import { startSiege } from './battles.js';
 import { UI } from '../ui/state.js';
@@ -25,20 +25,32 @@ export function nearestCity(x, y, pred) {
   for (const c of MAP.cities) { if (pred && !pred(c)) continue; const d = Math.hypot(c.x - x, c.y - y); if (d < bd) { bd = d; best = c; } }
   return best;
 }
+// cells per second, from the army's make-up and the ground under it (MAP.move, see map/generate.js)
 export function armySpeed(a) {
   const c = a.comp, men = menOf(c);
+  const i = cellOf(a.x, a.y), mc = MAP.move[i], onRoad = MAP.road[i] === 1;
+  const open = OPEN_GROUND.has(MAP.biome[i]);
   let s = BASE_SPEED;
   const SG = sigOf(a.owner);
-  if (men > 0 && (c.cav + (SG.mounted ? c.leg : 0)) / men > 0.95) s *= 1.5;
+  if (men > 0 && (c.cav + (SG.mounted ? c.leg : 0)) / men > 0.95) s *= onRoad || open ? 1.5 : 1.1;   // horsemen only outpace infantry on open ground
   if (c.leg > 0 && SG.slow) s *= SG.slow;
-  if (c.siege > 0) s *= 0.75;
+  if (c.siege > 0) s *= onRoad ? 0.85 : 0.6;   // engines crawl off the roads
   if (a.stance === 'def') s *= 0.85;
   if (a.state === 'rout') s *= 1.15;
-  const cost = MAP.cost[cellOf(a.x, a.y)];
-  s /= Math.min(cost < Infinity ? cost : 3, 5);
+  s /= Math.min(mc < Infinity ? mc : 3, 6);
   for (const f of GS.forts) if (f.owner !== a.owner && f.built >= 1 && Math.hypot(f.x - a.x, f.y - a.y) < 3.2) { s *= 0.45; break; }
   return s;
 }
+// what the ground at (x, y) means for a marching army, in words
+export function groundInfo(x, y) {
+  const i = cellOf(clamp(x, 0, MAP.W - 1), clamp(y, 0, MAP.H - 1)), m = MAP.move[i];
+  const wet = MAP.river[i] && MAP.elev[i] >= 0;
+  const name = MAP.bridge[i] ? 'Bridge' : MAP.road[i] ? 'Road' : wet ? (MAP.ford[i] ? 'Ford' : 'River') : BIOME_NAME[MAP.biome[i]];
+  const pace = !(m < Infinity) ? (wet ? 'no crossing here: find a bridge or a ford' : 'impassable')
+    : m <= 0.75 ? 'fast march' : m <= 1.15 ? 'normal pace' : m <= 1.6 ? 'slower going' : m <= 2.6 ? 'slow going' : 'very slow going';
+  return { name, pace, cost: m };
+}
+const OPEN_GROUND = new Set([BIOME.PLAINS, BIOME.STEPPE, BIOME.DESERT, BIOME.BEACH]);
 export function splitArmy(a) {
   if (a.state === 'battle' || menOf(a.comp) < 100) return null;
   const half = emptyComp();
@@ -47,7 +59,7 @@ export function splitArmy(a) {
   b.stance = a.stance; b.wins = a.wins; b.heading = a.heading;
   const ang = a.heading + Math.PI / 2;
   const nx = a.x + Math.sin(ang) * 1.6, ny = a.y + Math.cos(ang) * 1.6;
-  if (MAP.cost[cellOf(nx, ny)] < Infinity) orderMove(b, nx, ny);
+  if (MAP.move[cellOf(nx, ny)] < Infinity) orderMove(b, nx, ny);
   return b;
 }
 export function mergeArmies(into, from) {
@@ -66,7 +78,7 @@ export function pathfinder() {
   PF = { g: new Float32Array(N), came: new Int32Array(N), stamp: new Uint32Array(N), closed: new Uint32Array(N), gen: 0 };
 }
 export function findPath(sx, sy, tx, ty, owner) {
-  const W = MAP.W, H = MAP.H, cost = MAP.cost;
+  const W = MAP.W, H = MAP.H, cost = MAP.move;
   if (!PF) pathfinder();
   sx = clamp(Math.round(sx), 0, W - 1); sy = clamp(Math.round(sy), 0, H - 1);
   tx = clamp(Math.round(tx), 0, W - 1); ty = clamp(Math.round(ty), 0, H - 1);
@@ -86,12 +98,13 @@ export function findPath(sx, sy, tx, ty, owner) {
   if (start === goal) return [goal];
   const gen = ++PF.gen, g = PF.g, came = PF.came, stamp = PF.stamp, closed = PF.closed;
   const gx = goal % W, gy = (goal / W) | 0;
-  const hfun = (i) => { const dx = Math.abs(i % W - gx), dy = Math.abs(((i / W) | 0) - gy); return (dx + dy) + (1.414 - 2) * Math.min(dx, dy); };
+  // octile distance at road speed: never overestimates, so paths really take the roads
+  const hfun = (i) => { const dx = Math.abs(i % W - gx), dy = Math.abs(((i / W) | 0) - gy); return ((dx + dy) + (1.414 - 2) * Math.min(dx, dy)) * MOVE.road; };
   const heap = new Heap();
   stamp[start] = gen; g[start] = 0; came[start] = -1;
   heap.push(hfun(start), start);
   let found = false, iter = 0;
-  while (heap.size && iter++ < 60000) {
+  while (heap.size && iter++ < 80000) {
     const c = heap.pop();
     if (closed[c] === gen) continue;
     closed[c] = gen;
