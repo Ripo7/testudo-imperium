@@ -7,7 +7,7 @@ import { RIVER_MAT, RIVER_U, WATER_MAT, WATER_U } from './water.js';
 import { FLORA_MAT } from './vegetation.js';
 import { FIELD_MAT, ROAD_MAT } from './cities.js';
 import { MAP } from '../game/state.js';
-import { SIGHT } from '../game/sight.js';
+import { SIGHT, viewer } from '../game/sight.js';
 
 /* =========================================================
    Atmosphere: golden afternoon light, cool shadows, drifting
@@ -26,7 +26,7 @@ export const CLOUD_GLSL = [
   '  return smoothstep(0.53, 0.67, a);',
   '}',
 ].join('\n');
-// fog of war: outside Rome's sight the world is greyed and darkened (see game/sight.js)
+// fog of war: outside the player's sight the world is greyed and darkened (see game/sight.js)
 export const FOW_U = { uFowTex: { value: null }, uFowOn: { value: 0 }, uFowXf: { value: new THREE.Vector4(1, 1, 0.5, 0.5) } };
 export const FOW_GLSL = [
   'uniform sampler2D uFowTex;', 'uniform float uFowOn;', 'uniform vec4 uFowXf;',
@@ -42,12 +42,14 @@ export const FOW_GLSL = [
   const t = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
   t.needsUpdate = true; FOW_U.uFowTex.value = t;
 }
-let fowVersion = -1;
+let fowVersion = -1, fowViewer = -1;
 export function updateFogTexture() {
   FOW_U.uFowOn.value = SIGHT.on ? 1 : 0;
-  if (!SIGHT.on || SIGHT.version === fowVersion) return;
-  fowVersion = SIGHT.version;
-  const { W, H } = MAP, g = SIGHT.grid;
+  if (!SIGHT.on || (SIGHT.version === fowVersion && viewer() === fowViewer)) return;
+  const g = SIGHT.grids[viewer()];
+  if (!g) return;
+  fowVersion = SIGHT.version; fowViewer = viewer();
+  const { W, H } = MAP;
   let t = FOW_U.uFowTex.value;
   if (t.image.width !== W || t.image.height !== H) {
     t.dispose();

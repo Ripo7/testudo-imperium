@@ -18,8 +18,17 @@ const SIM = `async ([secs, needBattle]) => {
 const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
 const strip = (s) => { const c = { ...s }; delete c.at; return JSON.stringify(canon(c)); };
 
+class Ended extends Error {}
+const notOver = (st) => { if (st.over) throw new Ended(); return st; };
 async function scenario(browser, url, modeBtn, label) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await scenarioOnce(browser, url, modeBtn, label); }
+    catch (e) { if (!(e instanceof Ended) || attempt >= 3) throw e; console.log(`  [${label}] the campaign ended during the fast-forward, starting again`); }
+  }
+}
+async function scenarioOnce(browser, url, modeBtn, label) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  try {
   const errors = [];
   const open = async () => {
     const pg = await ctx.newPage();
@@ -42,7 +51,7 @@ async function scenario(browser, url, modeBtn, label) {
   check(await T(page, () => window.__T.UI.mode) === 'play', `[${label}] campaign started`);
   check((await saved(page)) !== null, `[${label}] saved on start`);
 
-  console.log('  simulated to', await run(page, SIM, [400, true]));
+  console.log('  simulated to', notOver(await run(page, SIM, [400, true])));
   await T(page, () => window.__T.saveGame());
   const s1 = await saved(page);
   console.log(`  save size ${Math.round(JSON.stringify(s1).length / 1024)} KB, ${s1.armies.length} armies, ${s1.battles.length} live battles`);
@@ -59,7 +68,7 @@ async function scenario(browser, url, modeBtn, label) {
   const st2 = await T(page, () => [window.__T.UI.mode, document.getElementById('hud').className, window.__T.GS.speed]);
   check(st2[0] === 'play' && !st2[1].includes('hidden') && st2[2] > 0, `[${label}] Continue resumes play`);
   check(Math.abs((await T(page, () => window.__T.GS.time)) - s1.gs.time) < 1, `[${label}] clock carried over`);
-  console.log('  played on to', await run(page, SIM, [120, false]));
+  console.log('  played on to', notOver(await run(page, SIM, [120, false])));
 
   await T(page, () => { window.__T.GS.speed = 1; });
   await click(page, '#btnMenu'); await page.waitForTimeout(100);
@@ -69,14 +78,14 @@ async function scenario(browser, url, modeBtn, label) {
   check(await T(page, () => window.__T.UI.mode === 'play' && window.__T.GS.speed > 0), `[${label}] Continue from main menu runs again`);
 
   const tBefore = (await saved(page)).gs.time;
-  await run(page, SIM, [60, false]);
+  notOver(await run(page, SIM, [60, false]));
   await T(page, () => { window.__T.GS.speed = 1; Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
   const tAfter = (await saved(page)).gs.time;
   check(tAfter > tBefore + 50, `[${label}] switching away saves (${tBefore.toFixed(0)}s -> ${tAfter.toFixed(0)}s)`);
   check(await page.isVisible('#menu'), `[${label}] switching away pauses`);
 
   await click(page, '#resumeBtn');
-  await run(page, SIM, [60, false]);
+  notOver(await run(page, SIM, [60, false]));
   const tLive = await T(page, () => window.__T.GS.time);
   await page.close();
   page = await open();
@@ -89,7 +98,7 @@ async function scenario(browser, url, modeBtn, label) {
     check((await saved(page)) === null, `[${label}] finished campaign clears the save`);
   }
   check(!errors.length, `[${label}] no script errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);
-  await ctx.close();
+  } finally { await ctx.close(); }
 }
 
 export default async function saveResume() {

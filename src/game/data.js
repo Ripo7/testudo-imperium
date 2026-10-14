@@ -19,7 +19,21 @@ export const FACTIONS = [
   { name: 'Egypt', adj: 'Egyptian', crest: 'AEGYPTUS', color: '#e8a40c', css: '#ffc72e', mix: { spear: 0.3, leg: 0.35, arch: 0.2, cav: 0.15 }, aggr: 0.6,
     perk: { name: 'Gift of the Nile', desc: 'Provinces with a river grow 30% more food, and Egyptian armies cross deserts without losses.', nile: 1.3, desertMarch: true } },
 ];
-export const PLAYER = 0, NEUTRAL = -1;
+// the power the human plays (any of the four); see setPlayer
+export let PLAYER = 0;
+export function setPlayer(f) { PLAYER = f; }
+export const NEUTRAL = -1;
+export const pName = () => FACTIONS[PLAYER].name;
+export const pAdj = () => FACTIONS[PLAYER].adj;
+// 'Carthage, Gaul and Egypt': every power but f
+export function othersOf(f) { const n = FACTIONS.filter((_, i) => i !== f).map((F) => F.name); return n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1]; }
+// what the screens say for each power
+export const VOICE = [
+  { court: 'The Senate awaits your orders.', win: 'The continent kneels before the Senate and People of Rome.', lost: 'The eagles are lost.', leader: 'consul' },
+  { court: 'The Council of Elders awaits your orders.', win: 'Every harbour of the continent now pays its dues to Carthage.', lost: 'The fleet burns in the harbour.', leader: 'suffete' },
+  { court: 'The chieftains gather round the fire.', win: 'From the forests to the sea, the tribes of Gaul rule the continent.', lost: 'The oppida burn and the torques are taken.', leader: 'chieftain' },
+  { court: 'The court of the Pharaoh awaits your word.', win: 'The continent bows before the Pharaoh.', lost: 'The temples fall silent.', leader: 'pharaoh' },
+];
 export const RES = ['gold', 'food', 'wood', 'stone'];
 export const TYPES5 = ['spear', 'leg', 'arch', 'cav', 'siege'];
 export const UNITS = {

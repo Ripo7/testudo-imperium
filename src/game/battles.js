@@ -1,3 +1,4 @@
+import { cityEstimate, fogRules, knowsArmy } from './sight.js';
 import { atPeace, atWar, declareWar, relOf } from './diplomacy.js';
 import { SET_W } from './standing.js';
 import { angDiff, cellOf, cloneComp, dist, emptyComp, GS, MAP, menOf, starsOf } from './state.js';
@@ -315,22 +316,33 @@ export function detectContacts() {
 }
 
 /* ---------- odds ---------- */
-export function estimateOdds(attArmies, T, sims) {
+// view: the power whose knowledge counts (under the fog it only counts the defenders it can see, and
+// judges an unseen city by its last report); null or undefined: the true odds
+export function estimateOdds(attArmies, T, sims, view) {
   sims = sims || 14;
+  const fogView = view != null && view >= 0 && fogRules();
   const fake = (a) => ({ comp: cloneComp(a.comp), stance: a.stance, wins: a.wins, x: a.x, y: a.y, state: a.state, owner: a.owner, siegeOnly: 0 });
   let kind = 'field', place = null, defs = [], x, y;
   if (T.kind === 'army') { defs = [T.ref]; x = T.ref.x; y = T.ref.y; }
   else { kind = T.kind; place = T.ref; x = place.x; y = place.y; }
   const defOwner = kind === 'field' ? T.ref.owner : place.owner;
-  for (const a of GS.armies) if (!a.dead && a.state !== 'rout' && a.owner === defOwner && defOwner !== NEUTRAL && !defs.includes(a) && Math.hypot(a.x - x, a.y - y) < 2.6) defs.push(a);
+  for (const a of GS.armies) if (!a.dead && a.state !== 'rout' && a.owner === defOwner && defOwner !== NEUTRAL && !defs.includes(a) && Math.hypot(a.x - x, a.y - y) < 2.6 && (!fogView || knowsArmy(view, a))) defs.push(a);
+  let milMen = place ? place.militia : 0;
+  if (fogView && kind === 'city') {
+    const e = cityEstimate(view, place);
+    if (!e.known) {
+      milMen = e.militia;
+      if (e.garrison > 0) defs.push({ comp: { spear: e.garrison, leg: 0, arch: 0, cav: 0, siege: 0 }, stance: 'def', wins: 0, x, y, state: 'idle', owner: defOwner });
+    }
+  }
   const rng = rng32(Math.floor(GS.time * 10) + attArmies[0].id * 7);
-  let wins = 0, attLeft = 0, defLeft = 0;
+  let wins = 0, attLeft = 0;
   const att0 = attArmies.reduce((s, a) => s + menOf(a.comp), 0);
   let modsOut = null;
   for (let k = 0; k < sims; k++) {
     const A = attArmies.map(fake), D = defs.map(fake);
     for (const d of D) if (T.kind === 'army' && d.state !== 'move') d.state = 'idle';
-    const mil = kind === 'city' ? { men: place.militia, sp: 0.7 } : kind === 'fort' ? { men: place.militia, sp: 0.5 } : null;
+    const mil = kind === 'city' ? { men: milMen, sp: 0.7 } : kind === 'fort' ? { men: place.militia, sp: 0.5 } : null;
     const B = { kind, place: place ? { walls: place.walls, owner: place.owner } : null, x, y, round: 0, luck: [0.86 + rng() * 0.28, 0.86 + rng() * 0.28], sides: [mkSide(attArmies[0].owner, A, null), mkSide(defOwner, D, mil)] };
     battleSetup(B);
     if (!modsOut) modsOut = modsList(B);
@@ -341,7 +353,7 @@ export function estimateOdds(attArmies, T, sims) {
       if (b0 || b1) { w = b1 && !b0 ? 0 : b0 && !b1 ? 1 : (sideMen(B.sides[0]) / B.sides[0].start > sideMen(B.sides[1]) / B.sides[1].start ? 0 : 1); break; }
     }
     if (w === 0) wins++;
-    attLeft += sideMen(B.sides[0]); defLeft += sideMen(B.sides[1]);
+    attLeft += sideMen(B.sides[0]);
   }
   return { p: wins / sims, attLoss: Math.max(0, att0 - attLeft / sims), mods: modsOut || [] };
 }

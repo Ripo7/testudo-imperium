@@ -108,8 +108,8 @@ export function issueOrder(h, cell) {
 export function attackPreview(h) {
   const arms = myOrderables();
   if (!arms.length || !h) return null;
-  if (h.kind === 'army' && h.ref.owner !== ME) return estimateOdds(arms, { kind: 'army', ref: h.ref });
-  if ((h.kind === 'city' || h.kind === 'fort') && h.ref.owner !== ME) return estimateOdds(arms, { kind: h.kind, ref: h.ref });
+  if (h.kind === 'army' && h.ref.owner !== ME) return estimateOdds(arms, { kind: 'army', ref: h.ref }, 0, ME);
+  if ((h.kind === 'city' || h.kind === 'fort') && h.ref.owner !== ME) return estimateOdds(arms, { kind: h.kind, ref: h.ref }, 0, ME);
   return null;
 }
 export function oddsHtml(o, title) {
@@ -134,7 +134,7 @@ export function tapAt(sx, sy) {
   if (!arms.length) { selectThing(h && h.kind !== 'prov' ? h : (h ? { kind: 'prov', ref: h.ref } : null)); return; }
   if (!h) return;
   if (h.kind === 'prov') { issueOrder(null, h.cell); hidePopup(); return; }
-  const name = h.kind === 'army' ? (h.ref.owner === ME ? 'Roman army' : `${FACTIONS[h.ref.owner].adj} army`) : h.kind === 'city' ? h.ref.name : h.kind === 'fort' ? 'Fort' : 'Battle';
+  const name = h.kind === 'army' ? `${FACTIONS[h.ref.owner].adj} army` : h.kind === 'city' ? h.ref.name : h.kind === 'fort' ? 'Fort' : 'Battle';
   UI.popup = h;
   let html = `<h3>${name}</h3>`;
   if (h.kind === 'army' && h.ref.owner === ME) {

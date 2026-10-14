@@ -1,3 +1,4 @@
+import { SIGHT_EVERY, updateSight } from './sight.js';
 import { dipTick } from './diplomacy.js';
 import { STAND, updateStanding } from './standing.js';
 import { GS, MAP } from './state.js';
@@ -13,6 +14,8 @@ import { endAuto, endCampaign, onEliminated } from '../ui/hud.js';
    ========================================================= */
 export function simStep(dt) {
   GS.time += dt;
+  GS.sightT = (GS.sightT || 0) - dt;
+  if (GS.sightT <= 0) { GS.sightT = SIGHT_EVERY; updateSight(); }
   economy(dt);
   for (const a of GS.armies) updateArmy(a, dt);
   detectContacts();

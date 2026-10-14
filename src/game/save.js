@@ -1,10 +1,11 @@
+import { updateSight } from './sight.js';
 import { updateStanding } from './standing.js';
 import { emptyComp, GS, MAP } from './state.js';
 import { $, store } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { CAM } from '../render/camera.js';
 import { VIEW } from '../render/terrain.js';
-import { FACTIONS, PEACE_TIME, PLAYER } from './data.js';
+import { FACTIONS, PEACE_TIME, PLAYER, pName, setPlayer } from './data.js';
 import { initCampaign } from './campaign.js';
 import { findPath } from './armies.js';
 import { setME, SPECT, UI } from '../ui/state.js';
@@ -33,16 +34,16 @@ export function serializeGame() {
   return {
     v: 1, mv: MOVE_RULES, seed: MAP.seed, print: mapPrint(), at: Date.now(),
     gs: {
-      time: GS.time, auto: GS.auto, rel: GS.rel, diff: GS.diff, fog: !!GS.fog, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT,
+      time: GS.time, auto: GS.auto, player: PLAYER, rel: GS.rel, diff: GS.diff, fog: !!GS.fog, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT,
       speed: playing ? (GS.speed || UI.menuSpeed || UI.helpSpeed || UI.lastSpeed || 1) : (UI.resumeSpeed || 1),
     },
-    factions: GS.factions.map((F) => ({ res: F.res, inc: F.inc, upk: F.upk, net: F.net, alive: F.alive, starving: F.starving, unpaid: F.unpaid, aiT: F.aiT, eliminatedAt: F.eliminatedAt, provoked: F.provoked, oath: F.oath, noDealT: F.noDealT })),
+    factions: GS.factions.map((F) => ({ res: F.res, inc: F.inc, upk: F.upk, net: F.net, alive: F.alive, starving: F.starving, unpaid: F.unpaid, aiT: F.aiT, eliminatedAt: F.eliminatedAt, provoked: F.provoked, oath: F.oath, noDealT: F.noDealT, intel: F.intel || {} })),
     prov: MAP.provinces.map((p) => p.owner),
     cities: MAP.cities.map((c) => ({ im: c.imps, ib: c.impBuild, o: c.owner, w: c.walls, wb: c.wallBuild, q: c.queue, cap: c.capital, l: c.loyal, m: c.militia, mm: c.militiaMax })),
     forts: GS.forts.filter((f) => !f.dead).map((f) => ({ id: f.id, o: f.owner, x: f.x, y: f.y, b: f.built, m: f.militia })),
     armies: GS.armies.filter((a) => !a.dead).map((a) => ({
       id: a.id, o: a.owner, comp: a.comp, x: a.x, y: a.y, h: a.heading, path: a.path, pi: a.pi, tg: refOf(a.target),
-      st: a.stance, s: a.state, rt: a.routT, w: a.wins, rp: a.repathT, ac: a.aiCommit, ps: a.preState,
+      st: a.stance, s: a.state, rt: a.routT, w: a.wins, rp: a.repathT, ac: a.aiCommit, ps: a.preState, lt: a.lostT,
     })),
     battles: GS.battles.filter((B) => !B.done).map((B) => ({
       id: B.id, kind: B.kind, place: B.place ? B.place.id : null, x: B.x, y: B.y, round: B.round, t: B.t, luck: B.luck, startMen: B.startMen,
@@ -57,8 +58,10 @@ export function restoreGame(S) {
   if (mapPrint() !== S.print || S.cities.length !== MAP.cities.length) throw new Error('This save belongs to a different map.');
   const g = S.gs;
   Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, fog: !!g.fog, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: g.fstats, checkT: g.checkT || 1, armies: [], forts: [], battles: [], over: null });
+  setPlayer(g.player || 0);   // saves from before any power was playable: Rome
   setME(GS.auto ? SPECT : PLAYER);
   S.factions.forEach((d, i) => Object.assign(GS.factions[i], d));
+  for (const F of GS.factions) F.isPlayer = false;
   GS.factions[PLAYER].isPlayer = !GS.auto;
   MAP.provinces.forEach((p, i) => { p.owner = S.prov[i]; });
   MAP.cities.forEach((c, i) => {
@@ -78,6 +81,7 @@ export function restoreGame(S) {
       battle: null, dead: false, repathT: d.rp || 0, layout: null, layoutKey: '', lastPos: { x: d.x, y: d.y },
     };
     if (d.ac != null) a.aiCommit = d.ac;
+    if (d.lt != null) a.lostT = d.lt;
     if (d.ps) a.preState = d.ps;
     GS.armies.push(a); armies.set(a.id, a);
   }
@@ -100,6 +104,8 @@ export function restoreGame(S) {
     GS.battles.push(B);
   }
   for (const a of GS.armies) if (a.state === 'battle' && !a.battle) a.state = 'idle';
+  for (const F of GS.factions) F.intel = F.intel || {};
+  GS.sightT = 0; updateSight(false);
   // saves from before roads, bridges and fords: re-plan marches, which may cross rivers that are now closed
   if ((S.mv || 1) < MOVE_RULES) for (const a of GS.armies) if (a.path && a.path.length) { const end = a.path[a.path.length - 1]; a.path = findPath(a.x, a.y, end % MAP.W, (end / MAP.W) | 0, a.owner); a.pi = 0; if (!a.path && a.state === 'move') a.state = 'idle'; }
   UI.resumeSpeed = g.speed || 1;
@@ -120,7 +126,7 @@ export function loadSave() { const s = store.get(SAVE_KEY, null); return s && s.
 export function clearSave() { store.del(SAVE_KEY); }
 export function resumeInfo() {
   const N = MAP.provinces.length, t = clockStr(GS.time);
-  if (!GS.auto) return `Rome holds ${MAP.provinces.filter((p) => p.owner === PLAYER).length} of ${N} provinces · ${t} of war`;
+  if (!GS.auto) return `${pName()} holds ${MAP.provinces.filter((p) => p.owner === PLAYER).length} of ${N} provinces · ${t} of war`;
   const counts = GS.factions.map((F) => MAP.provinces.filter((p) => p.owner === F.id).length);
   const lead = counts.indexOf(Math.max(...counts));
   return `Autoplay war · ${FACTIONS[lead].name} leads with ${counts[lead]} of ${N} · ${t}`;
@@ -130,7 +136,8 @@ export function showTitle() {
   $('contBtn').classList.toggle('hidden', !can);
   if (can) $('contInfo').textContent = resumeInfo();
   $('startBtn').classList.toggle('alt', can);
-  $('startBtn').innerHTML = can ? 'New campaign<small>Play as Rome on a fresh continent</small>' : 'Play as Rome<small>Command the legions yourself</small>';
+  const pick = FACTIONS[UI.pick || 0];
+  $('startBtn').innerHTML = can ? `New campaign<small>Play as ${pick.name} on a fresh continent</small>` : `Play as ${pick.name}<small>Pick your power above</small>`;
   $('autoBtn').innerHTML = can ? 'Autoplay<small>Watch a new war between four AI empires</small>' : 'Autoplay<small>Watch four AI empires fight it out</small>';
   showScreen('title');
 }

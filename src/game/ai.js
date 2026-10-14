@@ -1,3 +1,4 @@
+import { cityEstimate, knowsArmy } from './sight.js';
 import { atPeace, atWar, warsOf } from './diplomacy.js';
 import { canAfford, dist, emptyComp, GS, MAP, menOf, provAt } from './state.js';
 import { diffOf, fortCost, GANG_AT, hasImp, IMP_IDS, impCost, impSlots, NEUTRAL, sigOf, TYPES5, unitCost, wallCost } from './data.js';
@@ -13,7 +14,8 @@ export function aiTick(F) {
   if (!mine.length) return;
   const majors = mine.filter((c) => c.major);
   const armies = GS.armies.filter((a) => !a.dead && a.owner === F.id);
-  const hostileArmies = GS.armies.filter((a) => !a.dead && a.owner !== F.id && a.state !== 'rout' && !atPeace(F.id, a.owner));
+  // under the fog, the AI only reacts to the enemy armies it can see
+  const hostileArmies = GS.armies.filter((a) => !a.dead && a.owner !== F.id && a.state !== 'rout' && !atPeace(F.id, a.owner) && knowsArmy(F.id, a));
   const threatOf = (c) => hostileArmies.filter((h) => Math.hypot(h.x - c.x, h.y - c.y) < 14);
   const capital = mine.find((c) => c.capital) || majors[0] || mine[0];
   // the others turn on a power that grows too big
@@ -125,7 +127,7 @@ export function aiTick(F) {
     const men = menOf(a.comp);
     if (a.state === 'move' && a.target && a.aiCommit > GS.time) {
       // call off a march on an army that has turned out too strong
-      if (a.target.kind === 'army' && !a.target.ref.dead && estimateOdds([a], { kind: 'army', ref: a.target.ref }, 5).p < 0.3) { a.aiCommit = 0; a.path = null; a.target = null; a.state = 'idle'; }
+      if (a.target.kind === 'army' && !a.target.ref.dead && estimateOdds([a], { kind: 'army', ref: a.target.ref }, 5, F.id).p < 0.3) { a.aiCommit = 0; a.path = null; a.target = null; a.state = 'idle'; }
       else continue;
     }
     // reinforce a friendly army that is fighting nearby
@@ -150,14 +152,14 @@ export function aiTick(F) {
       if (!th.length) continue;
       const h = th.sort((p, q) => dist(p, c) - dist(q, c))[0];
       if (dist(a, c) > 30) continue;
-      const o = estimateOdds([a], { kind: 'army', ref: h }, 6);
+      const o = estimateOdds([a], { kind: 'army', ref: h }, 6, F.id);
       if (o.p >= 0.55) { orderTarget(a, 'army', h); a.stance = 'aggr'; a.aiCommit = GS.time + 6; defended = true; break; }
       else if (dist(a, c) > 1.8 && dist(a, c) < 20) { orderTarget(a, 'city', c); a.stance = 'def'; a.aiCommit = GS.time + 6; defended = true; break; }
     }
     // hunt raiders plundering our provinces
     if (!defended) {
       const raider = hostileArmies.filter((h) => h.state !== 'battle' && provAt(h.x, h.y) >= 0 && MAP.provinces[provAt(h.x, h.y)].owner === F.id && dist(a, h) < 26).sort((p, q) => dist(p, a) - dist(q, a))[0];
-      if (raider && estimateOdds([a], { kind: 'army', ref: raider }, 6).p >= 0.6) { orderTarget(a, 'army', raider); a.stance = 'aggr'; a.aiCommit = GS.time + 8; defended = true; }
+      if (raider && estimateOdds([a], { kind: 'army', ref: raider }, 6, F.id).p >= 0.6) { orderTarget(a, 'army', raider); a.stance = 'aggr'; a.aiCommit = GS.time + 8; defended = true; }
     }
     if (defended) continue;
     // merge small armies
@@ -176,7 +178,7 @@ export function aiTick(F) {
         const completes = [Pv.major, ...Pv.small].some((id) => id !== c.id && MAP.cities[id].owner === F.id) ? 1.25 : 1;   // finishing a province pays extra
         const ganged = gang && c.owner >= 0 ? (c.owner === topF.id ? 1 + gang : 1 - 0.25 * Math.min(1, gang)) : 1;
         const value = (c.major ? 3.2 : 1.7) * (c.owner === NEUTRAL ? 1.15 : 1) * (c.owner >= 0 && GS.factions[c.owner].isPlayer ? 1 + F.aggr * 0.3 : 1) * (c.capital ? 1.4 : 1) * completes * ganged * (1 + 0.12 * (c.imps ? c.imps.length : 0));
-        const defPow = c.militia * (c.owner === NEUTRAL ? 1 : 1) * (1 + 0.45 * Math.max(0, c.walls - Math.floor(a.comp.siege / 2)));
+        const defPow = cityEstimate(F.id, c).militia * (1 + 0.45 * Math.max(0, c.walls - Math.floor(a.comp.siege / 2)));   // what it believes defends the city
         const ratio = powerOf(a.comp, F.id) / Math.max(1, defPow * 1.2);
         if (ratio < 0.7) continue;
         cands.push({ c, d, value, pre: value * Math.min(ratio, 3) / (d + 12) });
@@ -184,7 +186,7 @@ export function aiTick(F) {
       cands.sort((p, q) => q.pre - p.pre);
       let best = null, bs = 0;
       for (const k of cands.slice(0, 4)) {
-        const o = estimateOdds([a], { kind: 'city', ref: k.c }, 7);
+        const o = estimateOdds([a], { kind: 'city', ref: k.c }, 7, F.id);
         const need = 0.68 - 0.18 * F.aggr + diffOf().need;
         if (o.p < need) continue;
         const s = k.value * o.p / (k.d + 12);
@@ -194,7 +196,7 @@ export function aiTick(F) {
       for (const h of hostileArmies) {
         if (dist(a, h) > 18 || h.state === 'battle') continue;
         if (atPeace(F.id, h.owner)) continue;
-        const o = estimateOdds([a], { kind: 'army', ref: h }, 6);
+        const o = estimateOdds([a], { kind: 'army', ref: h }, 6, F.id);
         if (o.p > 0.75) { const s = 2.5 * o.p / (dist(a, h) + 8); if (s > bs) { bs = s; best = h; } }
       }
       if (best) {

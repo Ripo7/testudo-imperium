@@ -4,7 +4,7 @@ import { GS, MAP, menOf, ownerName } from '../game/state.js';
 import { $, isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { CAM, projectCell } from '../render/camera.js';
-import { PEACE_TIME, PLAYER, RES, TREATY_TIME, U } from '../game/data.js';
+import { FACTIONS, PEACE_TIME, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
 import { sideMen } from '../game/battles.js';
 import { fcss, fmt, fmtInt, fmtRate, IC } from './format.js';
 import { _pp, $hint, $log, clearSel, ME, UI } from './state.js';
@@ -25,7 +25,7 @@ export function relMark(Fx) {
   if (!Fx.alive) return '';
   if (GS.auto) { const n = warsOf(Fx.id); return n ? ` <small class="war" title="At war with ${n} power${n > 1 ? 's' : ''}">⚔${n > 1 ? n : ''}</small>` : ''; }
   if (Fx.isPlayer) return '';
-  return atWar(PLAYER, Fx.id) ? ' <small class="war" title="At war with Rome">⚔</small>' : treatyOn(PLAYER, Fx.id) ? ' <small class="peace" title="Bound by a treaty with Rome">🕊</small>' : '';
+  return atWar(PLAYER, Fx.id) ? ` <small class="war" title="At war with ${pName()}">⚔</small>` : treatyOn(PLAYER, Fx.id) ? ` <small class="peace" title="Bound by a treaty with ${pName()}">🕊</small>` : '';
 }
 export function updateHUD() {
   const F = GS.factions[GS.auto ? UI.viewF : PLAYER];
@@ -34,7 +34,7 @@ export function updateHUD() {
     crestKey = ck;
     $('crest').querySelector('i').style.background = F.color;
     $('crest').querySelector('span').textContent = F.crest;
-    $('crestbar').title = GS.auto ? `Showing the treasury of ${F.name} (click to switch)` : '';
+    $('crestbar').title = GS.auto ? `Following ${F.name}: its treasury${GS.fog ? ' and what it sees' : ''} (click to switch)` : '';
   }
   RES.forEach((r, i) => {
     const e = resEls[i];
@@ -49,6 +49,7 @@ export function updateHUD() {
   document.querySelectorAll('#speed button').forEach((b) => b.classList.toggle('on', +b.dataset.sp === GS.speed));
   const need = STAND.need;
   let h = `<h4>The powers${GS.auto ? ', all AI' : ''}</h4>`;
+  if (GS.auto && GS.fog) h += `<div class="note" style="margin:-2px 0 4px;font-size:11.5px">Seen through the eyes of <b style="color:${FACTIONS[UI.viewF].css}">${FACTIONS[UI.viewF].name}</b> · click a power to switch</div>`;
   let lead = null, leadN = -1;
   for (const Fx of GS.factions) {
     const prov = Fx.pts;
@@ -70,7 +71,7 @@ $('envoy').addEventListener('click', (e) => {
   const b = e.target.closest('[data-env]'); if (!b || !UI.envoy) return;
   const E = UI.envoy;
   if (b.dataset.env === 'yes' && atWar(PLAYER, E.g)) { makePeace(PLAYER, E.g, TREATY_TIME, E.gold ? E.g : null, E.gold); Sfx.horn(); }
-  else { relOf(PLAYER, E.g).nd[PLAYER] = GS.time + 90; log(`Rome sends the envoys of ${fname(E.g)} home.`, 'info'); Sfx.click(); }
+  else { relOf(PLAYER, E.g).nd[PLAYER] = GS.time + 90; log(`${pName()} sends the envoys of ${fname(E.g)} home.`, 'info'); Sfx.click(); }
   hideEnvoy(); updateHUD(); renderPanel(true);
 });
 $('standRows').addEventListener('pointerdown', (e) => { const r = e.target.closest('[data-f]'); if (r && !GS.auto) { clearSel(true); UI.selDip = +r.dataset.f; UI.dipMsg = ''; Sfx.click(); renderPanel(true); } else if (r && GS.auto) { UI.viewF = +r.dataset.f; Sfx.click(); updateHUD(); } });
@@ -168,7 +169,7 @@ export function onCityCaptured(c, prev, f) {
   }
   if (f === ME) {
     GS.stats.captured++;
-    log(`<b>${c.name}</b> is ours!${c.major ? ` The province of ${P.name} bows to Rome.` : ''}`, 'good', c);
+    log(`<b>${c.name}</b> is ours!${c.major ? ` The province of ${P.name} bows to ${pName()}.` : ''}`, 'good', c);
   } else if (prev === ME) {
     log(`<b>${c.name}</b> has fallen to ${ownerName(f)}.${c.major ? ` The province of ${P.name} is lost.` : ''}`, 'bad', c);
   } else if (c.major) log(`${ownerName(f)} took ${c.name} (${P.name}).`, 'info', c);

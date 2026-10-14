@@ -121,7 +121,7 @@ export function hover(sx, sy) {
       tip = `<b>Right-click to attack</b><br>${Math.round(o.p * 100)}% — ${w} · losses ≈ ${fmtInt(o.attLoss)}`;
       if (o.mods.length) tip += '<br>' + o.mods.map(([n, e2]) => `${n}: ${e2}`).join('<br>');
     } else if (h.kind === 'city') tip = `<b>${h.ref.name}</b> · ${ownerName(h.ref.owner)}<br>${seesCity(h.ref) ? `militia ${fmtInt(h.ref.militia)} · ` : 'defenders unknown · '}walls ${h.ref.walls}`;
-    else if (h.kind === 'army') tip = `<b>${h.ref.owner === ME ? 'Roman' : FACTIONS[h.ref.owner].adj} army</b> · ${fmtInt(menOf(h.ref.comp))} men${arms.length && h.ref.owner === ME && !UI.sel.includes(h.ref) ? '<br>Right-click to merge' : ''}`;
+    else if (h.kind === 'army') tip = `<b>${FACTIONS[h.ref.owner].adj} army</b> · ${fmtInt(menOf(h.ref.comp))} men${arms.length && h.ref.owner === ME && !UI.sel.includes(h.ref) ? '<br>Right-click to merge' : ''}`;
     canvas.style.cursor = 'pointer';
   } else {
     canvas.style.cursor = arms.length ? 'crosshair' : 'default';
