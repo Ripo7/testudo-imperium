@@ -2,12 +2,11 @@ import { sees } from './sight.js';
 import { GS, MAP, menOf } from './state.js';
 import { FACTIONS, RES } from './data.js';
 import { nearestCity } from './armies.js';
-import { sideMen } from './battles.js';
 
 /* =========================================================
    The record of the war, read by the Overview panel and the end-of-war report:
      GS.chron   what happened: wars, peace treaties, battles, revolts, powers wiped out
-     GS.hist    each power's victory points, men under arms and income, every HIST_EVERY seconds
+     GS.hist    each power's settlement points, men under arms, income and provinces, every HIST_EVERY seconds
      GS.fstats  running totals per power: war, conquest and economy
    It is all simulation state: deterministic, and saved with the game.
    ========================================================= */
@@ -51,7 +50,7 @@ export function recordCapture(c, prev, f) {
 // p where (f field, c city, t fort), c the city (or the nearest one), x/y the spot, v who saw it
 export function recordBattle(B) {
   const a = B.sides[0].faction, d = B.sides[1].faction;
-  const l = B.sides.map((S) => Math.max(0, Math.round(S.start - (S.left || 0) - sideMen(S))));
+  const l = B.lost;
   const place = B.kind === 'city' ? B.place : nearestCity(B.x, B.y);
   record({ k: 'bat', a, d, w: B.winner, l, p: B.kind === 'fort' ? 't' : B.kind === 'city' ? 'c' : 'f', c: place ? place.id : -1, x: Math.round(B.x), y: Math.round(B.y), v: seenMask(B.x, B.y, [a, d]) });
   const wf = B.sides[B.winner].faction, lf = B.sides[1 - B.winner].faction;
@@ -60,6 +59,8 @@ export function recordBattle(B) {
   bump(d, 'dead', l[1]); bump(d, 'kills', l[0]);
 }
 export function recordFall(f) { record({ k: 'fall', f }); }
+// a province changes status: f its new owner (a power, NEUTRAL when every place is free, DISPUTED), g the previous one
+export function recordProvince(P, prev) { record({ k: 'prov', p: P.id, f: P.owner, g: prev }); }
 // every economy step: what each power earned and paid out
 export function recordEconomy(F, dt) {
   const s = GS.fstats[F.id];
@@ -70,8 +71,8 @@ export function recordEconomy(F, dt) {
   if (F.unpaid) s.unpaidT += dt;
 }
 
-// one row per sample: [time, points of each power..., men of each power..., income per second of each power (all resources)...]
-// (saves from before income was sampled have shorter rows)
+// one row per sample: [time, points of each power..., men..., income per second (all resources)..., provinces held...]
+// (saves from before income or provinces were sampled have shorter rows)
 export function sampleHistory() {
   const men = GS.factions.map(() => 0);
   for (const a of GS.armies) if (!a.dead && a.owner >= 0) men[a.owner] += menOf(a.comp);
@@ -79,6 +80,7 @@ export function sampleHistory() {
   for (const F of GS.factions) row.push(F.pts);
   GS.factions.forEach((F, i) => { const m = Math.round(men[i]); row.push(m); if (m > GS.fstats[i].peak) GS.fstats[i].peak = m; });
   for (const F of GS.factions) row.push(F.alive ? Math.round(costSum(F.inc) * 10) / 10 : 0);
+  for (const F of GS.factions) row.push(F.provs);
   GS.hist.push(row);
 }
 export function historyTick() {

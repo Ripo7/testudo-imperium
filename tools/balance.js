@@ -18,14 +18,16 @@ const WAR = `async (seed) => {
     const t = Math.round(T.GS.time);
     for (const m of [240, 600, 1200]) if (!snaps[m] && t >= m) snaps[m] = {
       pts: T.GS.factions.map((F) => F.pts),
+      provs: T.GS.factions.map((F) => F.provs),
+      disputed: T.MAP.provinces.filter((P) => P.owner === -2).length,
       men: T.GS.factions.map((F) => Math.round(T.GS.armies.filter((a) => !a.dead && a.owner === F.id).reduce((s, a) => s + a.comp.spear + a.comp.leg + a.comp.arch + a.comp.cav, 0))),
       res: T.GS.factions.map((F) => ['gold', 'food', 'wood', 'stone'].map((r) => Math.round(F.res[r]))),
       wars: Object.values(T.GS.rel).filter((R) => R.war).length,
     };
     await new Promise((r) => setTimeout(r, 0));
   }
-  const pts = T.GS.factions.map((F) => F.pts);
-  return { over: !!T.GS.over, time: Math.round(T.GS.time), winner: T.GS.over ? T.GS.winner : pts.indexOf(Math.max(...pts)), pts,
+  const pts = T.GS.factions.map((F) => F.pts), provs = T.GS.factions.map((F) => F.provs);
+  return { over: !!T.GS.over, time: Math.round(T.GS.time), winner: T.GS.over ? T.GS.winner : provs.indexOf(Math.max(...provs)), pts, provs,
            alive: T.GS.factions.map((F) => F.alive), snaps };
 }`;
 
@@ -46,7 +48,7 @@ for (const m of ['240', '600', '1200']) {
   const S = R.map((r) => r.snaps[m]).filter(Boolean);
   if (!S.length) continue;
   const avg = (f) => (S.reduce((s, x) => s + f(x), 0) / S.length);
-  console.log(`\nat ${m / 60} min (${S.length} wars): wars going on ${avg((x) => x.wars).toFixed(1)} of 6`);
-  NAMES.forEach((nm, f) => console.log(`  ${nm.padEnd(9)} points ${avg((x) => x.pts[f]).toFixed(1).padStart(5)}  men ${Math.round(avg((x) => x.men[f])).toString().padStart(5)}  gold/food/wood/stone ${[0, 1, 2, 3].map((i) => Math.round(avg((x) => x.res[f][i]))).join(' / ')}`));
+  console.log(`\nat ${m / 60} min (${S.length} wars): wars going on ${avg((x) => x.wars).toFixed(1)} of 6 · disputed provinces ${avg((x) => x.disputed || 0).toFixed(1)}`);
+  NAMES.forEach((nm, f) => console.log(`  ${nm.padEnd(9)} provinces ${avg((x) => (x.provs ? x.provs[f] : 0)).toFixed(1).padStart(4)}  points ${avg((x) => x.pts[f]).toFixed(1).padStart(5)}  men ${Math.round(avg((x) => x.men[f])).toString().padStart(5)}  gold/food/wood/stone ${[0, 1, 2, 3].map((i) => Math.round(avg((x) => x.res[f][i]))).join(' / ')}`));
 }
 console.log(`\nraw results: ${path.relative(ROOT, file)}`);

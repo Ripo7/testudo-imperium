@@ -20,8 +20,9 @@ const PROBES = [
   ['F.res.gold -= M.buy; F.res[r] += MARKET.lot;', A("'trade'", "'buy'", 'r')],
   ['F.res[r] -= MARKET.lot; F.res.gold += M.sell;', A("'trade'", "'sell'", 'r')],
   ['roundComp(a); a.battle = null; a.retreated = true;', A("'retreat'")],
-  ['function captureCity(c, f) {\n  const prev = c.owner;', A("'capture'", "c.major ? 'major' : 'town'", "prev >= 0 ? 'fromPower' : 'fromNeutral'") + " if (c.imps && c.imps.length && f >= 0)" + A("'captureLootsImp'")],
-  ['  B.startMen = [B.sides[0].start, B.sides[1].start];', `
+  ['function captureCity(c, f) {\n  const prev = c.owner;', A("'capture'", "c.major ? 'major' : 'town'", "prev >= 0 ? 'fromPower' : 'fromNeutral'") + " if (c.imps && c.imps.length && f >= 0)" + A("'captureLootsImp'")
+    + " if (f >= 0 && GS.forts.some((x) => !x.dead && x.built >= 1 && x.owner !== f && MAP.prov[Math.round(x.y) * MAP.W + Math.round(x.x)] === c.prov))" + A("'captureInProvinceWithEnemyFort'")],
+  ['  GS.battles.push(B);\n  onBattleStart(B);', `
   ${A("'battle'", 'kind', "defFaction >= 0 ? 'vsPower' : 'vsNeutral'")}
   if (kind === 'field') {${A("'field'", "B.river ? 'river' : 'noRiver'")}${A("'field'", "B.flank ? 'flank' : 'noFlank'")}${A("'field'", "B.rough ? 'rough' : 'open'")} }
   if (kind === 'city') {${A("'citySiege'", "'walls' + place.walls", "B.sides[0].armies.some((a) => a.comp.siege >= 1) ? 'withEngines' : 'noEngines'")} }
@@ -29,8 +30,10 @@ const PROBES = [
   ['function endBattle(B, winner) {', A("'battleEnd'", 'B.kind', "winner === 0 ? 'attackerWon' : 'defenderWon'") + " if (B.kind === 'city' && B.place.walls > 0)" + A("'wallsSiegeEnd'", "winner === 0 ? 'fell' : 'held'")],
   ['  const broke = R.lock > GS.time;\n', ` if (!R.war) {${A("'declare'", "broke ? 'breakingTreaty' : 'clean'")} (window.__audWars = window.__audWars || {})[pairKey(f, g)] = GS.time; }\n`],
   ['function makePeace(f, g, dur, payer, gold) {\n  const R = relOf(f, g);', ` if (R.war) {${A("'peace'", "payer != null && gold > 0 ? 'withTribute' : 'free'")} const t0 = (window.__audWars || {})[pairKey(f, g)]; if (t0 != null) (window.__audDur = window.__audDur || []).push(Math.round(GS.time - t0)); }`],
-  ['    if (Math.random() < revoltRisk(c, F)) { captureCity(c, NEUTRAL);', A("'revolt'")],
+  ['    if (rnd() < revoltRisk(c, F)) { captureCity(c, NEUTRAL);', A("'revolt'")],
   ['function showEnvoy(g, gold) {', A("'envoy'")],
+  ['export function recordProvince(P, prev) {', A("'province'", "P.owner >= 0 ? 'won' : P.owner === -2 ? 'disputed' : 'free'")],
+  ['        orderTarget(a, bestKind, best);', A("'aiAttack'", 'bestKind')],
 ];
 const applied = PROBES.map(() => 0);
 const probePlugin = {

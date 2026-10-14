@@ -1,10 +1,11 @@
 # Testudo Imperium
 
-Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a procedurally generated continent: raise armies, wall your cities, plunder enemy provinces, and make peace when the war turns against you.
+Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a procedurally generated continent: raise armies, wall your cities, plunder enemy provinces, and make peace when the war turns against you. Win by holding 60% of the provinces, each one whole.
 
-![A campaign in progress](docs/screenshot-campaign.jpg)
+![A campaign in progress, political map: the hatched province is disputed](docs/screenshot-campaign.jpg)
 
-- **Four powers, each with its own elite unit and speciality**: Roman legionaries and engineering, Punic war elephants and merchants, Gallic gaesatae and tribal levies, Egyptian chariots and the gift of the Nile.
+- **Four powers, each with its own elite unit and speciality**: Roman legionaries and engineering, Punic war elephants, mercenaries and harbours, Gallic gaesatae and tribal levies, Egyptian chariots and the gift of the Nile.
+- **Provinces are won whole**: a province is yours only while you hold its major city, every town and every fort built in it. Split between holders it is disputed, hatched on the map and counting for nobody. Forts are one more place to hold, and a way to keep a rival from completing a province.
 - **Terrain matters on the march**: armies go twice as fast on roads, slowly through forests and very slowly over mountains, and wide rivers can only be crossed on a bridge (narrow streams can be waded).
 - **Fog of war, for everyone**: each power, the AI included, only sees the land around its cities, armies and forts; cavalry and high ground see further. The AI judges unseen cities by its last report.
 - **Battles decided by strategy**: terrain, rivers, walls, flanks, stance and the odds you accept. Retreat when a battle turns.
@@ -76,7 +77,7 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 - **map**: map generation is deterministic and every province has its cities (plain Node).
 - **smoke**: a campaign plays on desktop and phone sizes, every panel (Overview tabs included) renders, the fog hides what it should, the war is recorded and the end-of-war report renders, no console errors.
 - **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
-- **determinism**: the same seed and the same random numbers give exactly the same game.
+- **determinism**: the same seed gives exactly the same game, whatever sounds and effects do with their own random numbers, and a war saved and loaded goes on exactly as if it had never stopped.
 - **save & resume**: play, close the tab, reopen, and check the restored game matches the save exactly.
 
 GitHub Actions runs the same suite on every push and pull request (`.github/workflows/ci.yml`).
@@ -100,7 +101,6 @@ The game is a static site, so any static host works too (Netlify, Cloudflare Pag
 
 ## Known issues
 
-- Sound effects draw from `Math.random`, the same generator the AI uses, so a game only replays identically with sound off (the determinism test mutes it). Giving the simulation its own seeded generator would fix that and allow replays.
 - The AI almost never attacks from two sides, so flanking is mostly a player tactic.
 
 ## Credits and licence

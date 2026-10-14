@@ -1,6 +1,6 @@
 import { atWar, relOf, revoltRisk, treatyOn } from '../game/diplomacy.js';
 import { knowsArmy } from '../game/sight.js';
-import { STAND } from '../game/standing.js';
+import { placesOf, STAND } from '../game/standing.js';
 import { GS, MAP, menOf } from '../game/state.js';
 import { FACTIONS, hasImp, PEACE_TIME } from '../game/data.js';
 import { sideMen } from '../game/battles.js';
@@ -16,7 +16,7 @@ import { clock, fmt, GLYPH } from './format.js';
 export const SEV_ORDER = { bad: 0, warn: 1, good: 2, info: 3 };
 export const NEAR_CITY = 8;        // an enemy army this close to a city is a threat to it
 export const RUNWAY = 90;          // warn when food or gold runs out within this many seconds
-export const NEAR_VICTORY = 6;     // warn when a power is this many points from victory
+export const NEAR_VICTORY = 2;     // warn when a power is this many provinces from victory
 export const UNREST_RISK = 0.03;   // warn when a city's chance of revolt passes 3% a minute
 
 export function computeAlerts(V) {
@@ -78,8 +78,19 @@ export function computeAlerts(V) {
   }
   // the race for victory
   const need = STAND.need;
-  for (const G of GS.factions) if (G.alive && G.id !== V && G.pts >= need - NEAR_VICTORY) add('bad', 'crown', `<b>${G.name}</b> nears victory`, `${G.pts}/${need}`, GS.auto ? 'over:wars' : `dip:${G.id}`);
-  if (F.pts >= need - NEAR_VICTORY) add('good', 'crown', 'Victory is within reach', `${F.pts}/${need}`, 'over:empire');
+  for (const G of GS.factions) if (G.alive && G.id !== V && G.provs >= need - NEAR_VICTORY) add('bad', 'crown', `<b>${G.name}</b> nears victory`, `${G.provs} of ${need} provinces`, GS.auto ? 'over:wars' : `dip:${G.id}`);
+  if (F.provs >= need - NEAR_VICTORY) add('good', 'crown', 'Victory is within reach', `${F.provs} of ${need} provinces`, 'over:empire');
+  // provinces one place away from being won whole (the last place held by a free town or a power at war)
+  let near = 0;
+  for (const P of MAP.provinces) {
+    if (P.owner === V || near >= 2) continue;
+    const pl = placesOf(P), left = pl.filter((x) => x.ref.owner !== V);
+    if (left.length !== 1 || pl.length < 2) continue;
+    const x = left[0].ref, o = x.owner;
+    if (o >= 0 && !atWar(V, o)) continue;
+    near++;
+    add('good', 'tower', `Take ${left[0].kind === 'fort' ? 'the fort' : `<b>${x.name}</b>`} to win <b>${P.name}</b>`, '', left[0].kind === 'fort' ? `spot:${x.x}:${x.y}` : `city:${x.id}`, `Every other place in ${P.name} is yours`);
+  }
   // truce and treaties running out
   if (GS.time < PEACE_TIME) add('info', 'dove', 'Opening truce', `${clock(PEACE_TIME - GS.time)} left`, 'over:wars', 'Nobody fights until it ends, unless someone strikes first');
   else for (const G of GS.factions) {

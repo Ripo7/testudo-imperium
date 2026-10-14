@@ -1,7 +1,8 @@
 import { cityEstimate, knowsArmy } from './sight.js';
 import { atPeace, atWar, warsOf } from './diplomacy.js';
-import { canAfford, dist, emptyComp, GS, MAP, menOf, provAt } from './state.js';
-import { diffOf, fortCost, GANG_AT, hasImp, IMP_IDS, impCost, impSlots, NEUTRAL, sigOf, TYPES5, unitCost, wallCost } from './data.js';
+import { canAfford, dist, emptyComp, GS, MAP, menOf, provAt, rnd } from './state.js';
+import { diffOf, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, impSlots, NEUTRAL, RIVALRY, sigOf, TYPES5, unitCost, wallCost } from './data.js';
+import { fortProv, holdsIn, placesOf } from './standing.js';
 import { mergeArmies, nearestCity, orderTarget } from './armies.js';
 import { canRetreat, estimateOdds, powerOf, retreatArmy, retreatSide, sideComp, sideMen } from './battles.js';
 import { buildFort, buildImp, fortify, fortSpotOk, recruit, trade } from './economy.js';
@@ -9,6 +10,10 @@ import { buildFort, buildImp, fortify, fortSpotOk, recruit, trade } from './econ
 /* =========================================================
    AI
    ========================================================= */
+// how much more a place is worth when taking it finishes a province (complete), leaves one place to go (nearly),
+// or breaks a rival's province (breaks; breakLeader for the power closest to victory); fort: an enemy fort's base value
+// need: the odds of victory an army wants before it attacks (less for aggressive powers)
+export const AI_PROV = { complete: 3, nearly: 1.7, breaks: 1.15, breakLeader: 1.5, fort: 1.7, need: 0.68 };
 export function aiTick(F) {
   const mine = MAP.cities.filter((c) => c.owner === F.id);
   if (!mine.length) return;
@@ -18,9 +23,16 @@ export function aiTick(F) {
   const hostileArmies = GS.armies.filter((a) => !a.dead && a.owner !== F.id && a.state !== 'rout' && !atPeace(F.id, a.owner) && knowsArmy(F.id, a));
   const threatOf = (c) => hostileArmies.filter((h) => Math.hypot(h.x - c.x, h.y - c.y) < 14);
   const capital = mine.find((c) => c.capital) || majors[0] || mine[0];
-  // the others turn on a power that grows too big
-  const topF = GS.factions.reduce((b, x) => (x.alive && (!b || x.share > b.share) ? x : b), null);
-  const gang = topF && topF !== F && topF.share > GANG_AT ? Math.min(1.5, (topF.share - GANG_AT) * 6) : 0;
+  // the others turn on the power closest to victory
+  const topF = GS.factions.reduce((b, x) => (x.alive && (!b || x.vshare > b.vshare) ? x : b), null);
+  const gang = topF && topF !== F && topF.vshare > RIVALRY.gangAt ? Math.min(RIVALRY.gangMax, (topF.vshare - RIVALRY.gangAt) * RIVALRY.gangK) : 0;
+  // what taking a place is worth for the provinces: finishing one of ours, or breaking one of theirs
+  const provValue = (Pv, place) => {
+    const missing = placesOf(Pv).filter((x) => x.ref !== place && x.ref.owner !== F.id).length;
+    const completes = missing === 0 ? AI_PROV.complete : missing === 1 ? AI_PROV.nearly : 1;
+    const breaks = Pv.owner >= 0 && Pv.owner !== F.id ? (gang && Pv.owner === topF.id ? AI_PROV.breakLeader : AI_PROV.breaks) : 1;
+    return completes * breaks;
+  };
 
   // --- walls: the capital first, then threatened cities; spare stone goes into walls everywhere
   const rich = F.res.stone > 700;
@@ -77,7 +89,7 @@ export function aiTick(F) {
       if (ec.spear / em > 0.4) { if (good.includes('spear')) w.leg += 0.25; else w.arch += 0.15; }
       if (ec.leg / em > 0.35) { w.arch += 0.2; if (good.includes('leg')) w.leg += 0.15; }
     }
-    const roll = (list) => { let sw = list.reduce((s, t) => s + w[t], 0), r = Math.random() * sw; for (const t of list) { r -= w[t]; if (r <= 0) return t; } return list[0]; };
+    const roll = (list) => { let sw = list.reduce((s, t) => s + w[t], 0), r = rnd() * sw; for (const t of list) { r -= w[t]; if (r <= 0) return t; } return list[0]; };
     const urgent = armyMen < desired * 0.35 || mine.some((c) => (c.battle && !c.battle.done) || threatOf(c).some((h) => h.target && h.target.ref === c));
     // once it has decided on its elite unit, the power saves up for it (for up to 40 s) unless a city is under attack
     let pick = F.saveFor && F.saveUntil > GS.time && !urgent ? 'leg' : roll(['spear', 'leg', 'arch', 'cav']);
@@ -158,7 +170,7 @@ export function aiTick(F) {
     }
     // hunt raiders plundering our provinces
     if (!defended) {
-      const raider = hostileArmies.filter((h) => h.state !== 'battle' && provAt(h.x, h.y) >= 0 && MAP.provinces[provAt(h.x, h.y)].owner === F.id && dist(a, h) < 26).sort((p, q) => dist(p, a) - dist(q, a))[0];
+      const raider = hostileArmies.filter((h) => h.state !== 'battle' && provAt(h.x, h.y) >= 0 && holdsIn(MAP.provinces[provAt(h.x, h.y)], F.id) && dist(a, h) < 26).sort((p, q) => dist(p, a) - dist(q, a))[0];
       if (raider && estimateOdds([a], { kind: 'army', ref: raider }, 6, F.id).p >= 0.6) { orderTarget(a, 'army', raider); a.stance = 'aggr'; a.aiCommit = GS.time + 8; defended = true; }
     }
     if (defended) continue;
@@ -167,40 +179,47 @@ export function aiTick(F) {
       const big = armies.filter((b) => b !== a && !b.dead && b.state !== 'battle' && b.state !== 'rout' && menOf(b.comp) >= men && dist(a, b) < 35).sort((p, q) => dist(p, a) - dist(q, a))[0];
       if (big) { orderTarget(a, 'merge', big); a.aiCommit = GS.time + 10; continue; }
     }
-    // offense
+    // offense: cities, and the enemy forts that stand in the way of a province
     if (men >= 450) {
       const cands = [];
+      const ratioOf = (defPow) => powerOf(a.comp, F.id) / Math.max(1, defPow * 1.2);
       for (const c of MAP.cities) {
         if (c.owner === F.id) continue;
         if (c.owner !== NEUTRAL && atPeace(F.id, c.owner)) continue;
         const d = dist(a, c); if (d > 60) continue;
-        const Pv = MAP.provinces[c.prov];
-        const completes = [Pv.major, ...Pv.small].some((id) => id !== c.id && MAP.cities[id].owner === F.id) ? 1.25 : 1;   // finishing a province pays extra
         const ganged = gang && c.owner >= 0 ? (c.owner === topF.id ? 1 + gang : 1 - 0.25 * Math.min(1, gang)) : 1;
-        const value = (c.major ? 3.2 : 1.7) * (c.owner === NEUTRAL ? 1.15 : 1) * (c.owner >= 0 && GS.factions[c.owner].isPlayer ? 1 + F.aggr * 0.3 : 1) * (c.capital ? 1.4 : 1) * completes * ganged * (1 + 0.12 * (c.imps ? c.imps.length : 0));
-        const defPow = cityEstimate(F.id, c).militia * (1 + 0.45 * Math.max(0, c.walls - Math.floor(a.comp.siege / 2)));   // what it believes defends the city
-        const ratio = powerOf(a.comp, F.id) / Math.max(1, defPow * 1.2);
+        const value = (c.major ? 3.2 : 1.7) * (c.owner === NEUTRAL ? 1.15 : 1) * (c.owner >= 0 && GS.factions[c.owner].isPlayer ? 1 + F.aggr * 0.3 : 1) * (c.capital ? 1.4 : 1) * provValue(MAP.provinces[c.prov], c) * ganged * (1 + 0.12 * (c.imps ? c.imps.length : 0));
+        const ratio = ratioOf(cityEstimate(F.id, c).militia * (1 + 0.45 * Math.max(0, c.walls - Math.floor(a.comp.siege / 2))));   // what it believes defends the city
         if (ratio < 0.7) continue;
-        cands.push({ c, d, value, pre: value * Math.min(ratio, 3) / (d + 12) });
+        cands.push({ ref: c, kind: 'city', d, value, pre: value * Math.min(ratio, 3) / (d + 12) });
+      }
+      for (const f of GS.forts) {
+        if (f.dead || f.built < 1 || f.owner === F.id || !atWar(F.id, f.owner)) continue;
+        const p = fortProv(f); if (p < 0 || !holdsIn(MAP.provinces[p], F.id)) continue;   // only forts in provinces it has a stake in
+        const d = dist(a, f); if (d > 60) continue;
+        const value = AI_PROV.fort * provValue(MAP.provinces[p], f);
+        const ratio = ratioOf(FORT_MAX * (1 + 0.45 * Math.max(0, FORT_WALLS - Math.floor(a.comp.siege / 2))));
+        if (ratio < 0.7) continue;
+        cands.push({ ref: f, kind: 'fort', d, value, pre: value * Math.min(ratio, 3) / (d + 12) });
       }
       cands.sort((p, q) => q.pre - p.pre);
-      let best = null, bs = 0;
+      let best = null, bestKind = null, bs = 0;
       for (const k of cands.slice(0, 4)) {
-        const o = estimateOdds([a], { kind: 'city', ref: k.c }, 7, F.id);
-        const need = 0.68 - 0.18 * F.aggr + diffOf().need;
+        const o = estimateOdds([a], { kind: k.kind, ref: k.ref }, 7, F.id);
+        const need = AI_PROV.need - 0.18 * F.aggr + diffOf().need;
         if (o.p < need) continue;
         const s = k.value * o.p / (k.d + 12);
-        if (s > bs) { bs = s; best = k.c; }
+        if (s > bs) { bs = s; best = k.ref; bestKind = k.kind; }
       }
       // opportunistic strike on a nearby weaker army
       for (const h of hostileArmies) {
         if (dist(a, h) > 18 || h.state === 'battle') continue;
         if (atPeace(F.id, h.owner)) continue;
         const o = estimateOdds([a], { kind: 'army', ref: h }, 6, F.id);
-        if (o.p > 0.75) { const s = 2.5 * o.p / (dist(a, h) + 8); if (s > bs) { bs = s; best = h; } }
+        if (o.p > 0.75) { const s = 2.5 * o.p / (dist(a, h) + 8); if (s > bs) { bs = s; best = h; bestKind = 'army'; } }
       }
       if (best) {
-        if (best.comp) orderTarget(a, 'army', best); else orderTarget(a, 'city', best);
+        orderTarget(a, bestKind, best);
         a.stance = 'aggr'; a.aiCommit = GS.time + 14;
         continue;
       }

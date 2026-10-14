@@ -1,12 +1,8 @@
 import { cityEstimate, fogRules, knowsArmy } from './sight.js';
 import { atPeace, atWar, declareWar, relOf } from './diplomacy.js';
 import { SET_W } from './standing.js';
-import { angDiff, cellOf, cloneComp, dist, emptyComp, GS, MAP, menOf, starsOf } from './state.js';
-import { rand } from '../core/util.js';
+import { angDiff, cellOf, cloneComp, dist, emptyComp, GS, MAP, menOf, rnd, rndIn, starsOf } from './state.js';
 import { BIOME, BIOME_NAME, rng32 } from '../map/generate.js';
-import { cellToWorld } from '../render/world.js';
-import { dust } from '../render/overlays.js';
-import { updateTerrainColors } from '../render/terrain.js';
 import { refreshCityMesh, removeFortMesh } from '../render/cities.js';
 import { BALN, FORT_WALLS, K_DMG, NEUTRAL, ROUND_T, sigOf, TERRAIN_DEF, TW_CAV, TW_DEF, TYPES5, UNITS, VS } from './data.js';
 import { militiaMaxOf } from './campaign.js';
@@ -23,7 +19,13 @@ export function mkSide(faction, armies, militia) {
   s.start = sideMen(s);
   return s;
 }
-export function sideMen(s) { let m = 0; for (const a of s.armies) m += menOf(a.comp) + a.comp.siege * 8; if (s.militia) m += s.militia.men; return m; }
+// an army's weight in a battle: its men, and 8 for every siege engine
+export const armyMen = (a) => menOf(a.comp) + a.comp.siege * 8;
+export function sideMen(s) { let m = 0; for (const a of s.armies) m += armyMen(a); if (s.militia) m += s.militia.men; return m; }
+// what a side has committed (S.start grows as reinforcements join) less what got away by retreating
+export const sideFought = (S) => S.start - (S.left || 0);
+// men a side has lost so far: everyone who fought for it, less those still standing
+export const sideLosses = (S) => Math.max(0, sideFought(S) - sideMen(S));
 export function sideComp(s) {
   const c = emptyComp();
   for (const a of s.armies) for (const t of TYPES5) c[t] += a.comp[t];
@@ -179,7 +181,7 @@ export function startBattle(kind, attArmies, defArmies, place, x, y) {
     if (a.owner === defFaction && defFaction !== NEUTRAL && d < 2.6) def.push(a);
     else if (a.owner === att[0].owner && d < 2.6 && (a.target && place && a.target.ref === place || a.state === 'idle')) att.push(a);
   }
-  const B = { id: GS.nextId++, kind, place, x, y, round: 0, t: 0, done: false, luck: [rand(0.86, 1.14), rand(0.86, 1.14)], sides: [mkSide(att[0].owner, att, null), mkSide(defFaction, def, militia)] };
+  const B = { id: GS.nextId++, kind, place, x, y, round: 0, t: 0, done: false, luck: [rndIn(0.86, 1.14), rndIn(0.86, 1.14)], sides: [mkSide(att[0].owner, att, null), mkSide(defFaction, def, militia)] };
   B.sides[1].start = sideMen(B.sides[1]);
   for (const a of att.concat(def)) { if (a.state === 'idle' || a.state === 'move') a.preState = a.state; }
   battleSetup(B);
@@ -187,7 +189,6 @@ export function startBattle(kind, attArmies, defArmies, place, x, y) {
   if (defFaction >= 0 && att[0].owner >= 0 && atPeace(att[0].owner, defFaction)) declareWar(att[0].owner, defFaction);
   for (const a of att) a.heading = Math.atan2(x - a.x, y - a.y);
   for (const a of def) a.heading = Math.atan2(att[0].x - a.x, att[0].y - a.y);
-  B.startMen = [B.sides[0].start, B.sides[1].start];
   GS.battles.push(B);
   onBattleStart(B);
   return B;
@@ -195,7 +196,7 @@ export function startBattle(kind, attArmies, defArmies, place, x, y) {
 export function startSiege(att, place, kind) {
   if (place.battle && !place.battle.done) { // join an ongoing assault
     const B = place.battle;
-    if (B.sides[0].faction === att[0].owner) { for (const a of att) { B.sides[0].armies.push(a); B.sides[0].start += menOf(a.comp); a.state = 'battle'; a.battle = B; } battleSetup(B); }
+    if (B.sides[0].faction === att[0].owner) { for (const a of att) { B.sides[0].armies.push(a); B.sides[0].start += armyMen(a); a.state = 'battle'; a.battle = B; } battleSetup(B); }
     return B;
   }
   const defArmies = GS.armies.filter((a) => !a.dead && a.owner === place.owner && place.owner !== NEUTRAL && a.state !== 'battle' && a.state !== 'rout' && Math.hypot(a.x - place.x, a.y - place.y) < 2.6);
@@ -213,19 +214,18 @@ export function updateBattles(dt) {
       if (Math.hypot(a.x - B.x, a.y - B.y) > 2.4) continue;
       const si = a.owner === B.sides[0].faction ? 0 : a.owner === B.sides[1].faction ? 1 : -1;
       if (si < 0) continue;
-      B.sides[si].armies.push(a); B.sides[si].start += menOf(a.comp) + a.comp.siege * 8;
+      B.sides[si].armies.push(a); B.sides[si].start += armyMen(a);
       a.state = 'battle'; a.battle = B; a.heading = Math.atan2(B.x - a.x, B.y - a.y);
       battleSetup(B);
     }
     B.t += dt;
     while (B.t >= ROUND_T && !B.done) {
       B.t -= ROUND_T;
-      battleRound(B, Math.random, true);
+      battleRound(B, rnd, true);
       if (B.place && B.place.militia != null && B.sides[1].militia) B.place.militia = B.sides[1].militia.men;
       const br0 = sideBroken(B.sides[0]), br1 = sideBroken(B.sides[1]);
       if (br0 || br1 || B.round > 60) endBattle(B, br1 && !br0 ? 0 : br0 && !br1 ? 1 : (br0 && br1 && sideMen(B.sides[0]) / B.sides[0].start > sideMen(B.sides[1]) / B.sides[1].start ? 0 : 1));
     }
-    if (!B.done && Math.random() < dt * 3) { const w = cellToWorld(B.x, B.y); dust(w.x, Math.max(0, w.y), w.z, 2, 0.9, 1.4); }
   }
   GS.battles = GS.battles.filter((B) => !B.done || (GS.time - B.endT) < 3);
 }
@@ -234,7 +234,7 @@ export function endBattle(B, winner) {
   if (atWar(f0, f1)) {
     const R = relOf(f0, f1);
     for (let i = 0; i < 2; i++) {
-      const f = B.sides[i].faction, lost = Math.max(0, B.startMen[i] - sideMen(B.sides[i]));
+      const f = B.sides[i].faction, lost = sideLosses(B.sides[i]);
       const left = GS.armies.reduce((m, a) => m + (!a.dead && a.owner === f ? menOf(a.comp) : 0), 0);
       R.w[f] = (R.w[f] || 0) + lost / Math.max(500, lost + left) * 0.6;
       R.sc[B.sides[1 - i].faction] = (R.sc[B.sides[1 - i].faction] || 0) + lost / 400;
@@ -265,6 +265,7 @@ export function endBattle(B, winner) {
   } else if (B.kind === 'fort') {
     if (winner === 0) { B.place.dead = true; removeFortMesh(B.place); GS.forts = GS.forts.filter((f) => f !== B.place); }
   }
+  B.lost = B.sides.map((S) => Math.round(sideLosses(S)));   // the pursuit included: what the chronicle, the stats and the messages report
   recordBattle(B);
   onBattleEnd(B);
 }
@@ -287,7 +288,6 @@ export function captureCity(c, f) {
   c.owner = f; c.walls = Math.max(0, c.walls - 1); c.wallBuild = null; c.queue = [];
   c.impBuild = null; if (c.imps.length) c.imps.pop();   // the last building is looted
   c.militiaMax = militiaMaxOf(c); c.militia = c.militiaMax * 0.35; c.loyal = 0.3;
-  if (c.major) { MAP.provinces[c.prov].owner = f; updateTerrainColors(); }
   refreshCityMesh(c);
   onCityCaptured(c, prev, f);
 }
@@ -382,7 +382,7 @@ export function retreatArmy(a) {
   for (const t of ['spear', 'leg', 'arch', 'cav']) a.comp[t] *= 1 - loss;
   a.comp.siege *= 0.5;
   roundComp(a); a.battle = null; a.retreated = true;
-  S.left = (S.left || 0) + menOf(a.comp) + a.comp.siege * 8;   // they got away: not counted as losses
+  S.left = (S.left || 0) + armyMen(a);   // they got away: not counted as losses
   if (menOf(a.comp) < 15) a.dead = true; else { rout(a, B); a.routT = 4; }
   if (a.owner === ME && !GS.auto) log(`Our army <b>retreats</b>, losing ${Math.round(loss * 100)}% to the pursuit.`, 'info', a);
   const empty = !S.armies.length && !(si === 1 && S.militia);
