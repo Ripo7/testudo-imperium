@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Testudo Imperium</title>
+  <meta name="description" content="Real-time strategy on a procedural continent: Rome, Carthage, the Gauls and Egypt fight, trade and make peace.">
+  <meta name="theme-color" content="#21160e">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+  <div id="vignette"></div>
+  <div id="labels"></div>
+
+  <div id="hud" class="hidden">
+    <div id="top">
+      <div class="bar" id="crestbar" title="Treasury shown"><div id="crest"><i></i><span>ROMA</span><b id="autoTag">Autoplay</b></div></div>
+      <div class="bar" id="resbar"></div>
+      <div class="spacer"></div>
+      <div class="bar" id="speed">
+        <button data-sp="0" aria-label="Pause"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+        <button data-sp="1" aria-label="Normal speed"><svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg></button>
+        <button data-sp="2" aria-label="Fast"><svg viewBox="0 0 24 24"><path d="M3 5l9 7-9 7zM12 5l9 7-9 7z"/></svg></button>
+        <button data-sp="4" aria-label="Faster"><svg viewBox="0 0 24 24"><path d="M1 5l7 7-7 7zM8 5l7 7-7 7zM15 5l7 7-7 7z"/></svg></button>
+        <button data-sp="8" aria-label="Fastest"><svg viewBox="0 0 24 24"><path d="M0 6l6 6-6 6zM6 6l6 6-6 6zM12 6l6 6-6 6zM18 6l6 6-6 6z"/></svg></button>
+        <span id="clock">0:00</span>
+      </div>
+      <div class="bar">
+        <button class="ibtn" id="btnHelp" aria-label="Help"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 16h-2v-2h2zm2.1-7.7-.9.9c-.7.7-1.2 1.3-1.2 2.8h-2v-.5c0-1.1.5-2.1 1.2-2.8l1.2-1.3c.4-.4.6-.9.6-1.4a2 2 0 0 0-4 0H8a4 4 0 0 1 8 0c0 .9-.4 1.7-.9 2.3z"/></svg></button>
+        <button class="ibtn" id="btnMute" aria-label="Sound"><svg viewBox="0 0 24 24" id="muteIco"></svg></button>
+        <button class="ibtn" id="btnMenu" aria-label="Menu"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="2.4" rx="1"/><rect x="4" y="11" width="16" height="2.4" rx="1"/><rect x="4" y="16" width="16" height="2.4" rx="1"/></svg></button>
+      </div>
+    </div>
+    <div id="stand"><div id="standRows"></div>
+      <div id="tools">
+        <button id="btnMap" title="Political map (P)"><svg viewBox="0 0 24 24"><path d="M3 5.5 9 3v15.5L3 21z"/><path d="M9 3l6 2.5V21l-6-2.5z" fill-opacity=".55"/><path d="M15 5.5 21 3v15.5L15 21z"/></svg><span>Political</span></button>
+        <button id="btnFollow" class="hidden" title="Camera follows the action (F)"><svg viewBox="0 0 24 24"><path d="M3 7h12a2 2 0 0 1 2 2v1.6l4-2.6v8l-4-2.6V15a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/></svg><span>Follow</span></button>
+      </div>
+    </div>
+    <div id="log"></div>
+    <div id="hintbar"></div>
+    <div id="placebar" class="hidden"><span>Choose a spot in your territory for the fort</span><button class="abtn" id="placeCancel" style="width:auto">Cancel</button></div>
+    <div id="envoy" class="hidden"></div>
+    <div id="panel"></div>
+    <div id="popup" class="hidden"></div>
+    <div id="tip" class="hidden"></div>
+  </div>
+
+  <div id="title" class="screen">
+    <div class="pnl">
+      <h1 class="title">Testvdo<small>Imperivm</small></h1>
+      <p class="tag">Four powers, one continent. Strike when the moment is right.</p>
+      <div class="powers" id="powers"></div>
+      <div class="btnstack">
+        <button class="big-btn hidden" id="contBtn">Continue<small id="contInfo"></small></button>
+        <div class="diff" id="diffSel"></div>
+        <div class="btnrow">
+          <button class="big-btn" id="startBtn">Play as Rome<small>Command the legions yourself</small></button>
+          <button class="big-btn alt" id="autoBtn">Autoplay<small>Watch four AI empires fight it out</small></button>
+        </div>
+      </div>
+      <div class="rules tablet">
+        <div><h3>Provinces</h3><p>A province's land income is shared by its settlements: the major city the most. Hold them all for a bonus.</p></div>
+        <div><h3>Resources</h3><p>Farmland feeds, forests give wood, hills give stone, cities give gold, every second. Armies eat food.</p></div>
+        <div><h3>Armies</h3><p>Spears stop horse, horse rides down archers, siege engines break walls. Each power also fields its own elite unit.</p></div>
+        <div><h3>Battles</h3><p>Fought automatically but decided by you: terrain, rivers, walls, flanks, stance and the odds you accept.</p></div>
+      </div>
+      <div class="note2 desk-only">Click to select, right-click to march or attack. Drag to pan, scroll to zoom, Space to pause, 1–4 for speed, P for the political map.</div>
+      <div class="note2 touch-only">Tap to select, tap a place to march or an enemy to attack. Drag to pan, pinch to zoom.</div>
+    </div>
+  </div>
+
+  <div id="menu" class="screen hidden">
+    <div class="pnl tablet" style="max-width:440px">
+      <h2 class="title" style="font-size:clamp(38px,10vw,58px)">Paused</h2>
+      <p class="tag">The Senate awaits your orders.</p>
+      <button class="big-btn" id="resumeBtn">Resume</button><br>
+      <button class="ghost-btn" id="autoToggle">Hand Rome over to the AI</button><br>
+      <button class="ghost-btn" id="newBtn">Start a new campaign</button><br>
+      <button class="ghost-btn" id="quitBtn">Main menu</button>
+    </div>
+  </div>
+
+  <div id="help" class="screen hidden">
+    <div class="pnl tablet">
+      <h2>How to rule</h2>
+      <h4>Goal</h4>
+      <p>Hold <b>half of all victory points</b> (a major city is worth 3, a town 1), or wipe out Carthage, the Gauls and Egypt. If you lose every major city, or a rival gets there first, Rome falls. After 25 minutes of war the bar eases, down to 40% at 35 minutes, so a clear leader can end a long stalemate.</p>
+      <p>Growth has a brake: past 30% of the points an empire is <b>overstretched</b> (income falls about 0.8% for every point above 30%, and conquered cities settle more slowly), and the other powers turn on whoever passes about 36%.</p>
+      <h4>War and peace</h4>
+      <ul>
+        <li>The war starts with a 4-minute <b>truce</b>: the powers race for the neutral towns and march past each other.</li>
+        <li>After that, powers stay <b>at peace</b> until one <b>declares war</b>: the AI picks a neighbour it thinks it can beat, usually one war at a time, and rarely while there are still free towns to take. Attacking a power you are at peace with declares war.</li>
+        <li>Wars <b>wear powers down</b>: battle losses, lost cities, hunger, unpaid troops, other fronts and simply time. A worn-out or losing power seeks peace, and pays <b>tribute</b> if the other side must be bought; a winning one demands tribute. The AI powers make peace with each other the same way.</li>
+        <li>Click a rival in the standings to talk: <b>offer peace</b> (free, or for the tribute they ask), <b>renew a treaty</b>, or <b>declare war</b>. AI <b>envoys</b> come to Rome when they want peace.</li>
+        <li>A peace <b>treaty binds for 2½ minutes</b>. The AI keeps its treaties. Break one and Rome is an <b>oath-breaker</b>: nobody will deal with you for 4 minutes.</li>
+        <li>Armies at war <b>plunder</b> enemy provinces they stand in (the owner loses 60% of that land's income) and live off the land (no extra food cost abroad).</li>
+        <li>A freshly conquered city with low loyalty, no garrison and no temple may <b>revolt</b>, especially in an overstretched empire.</li>
+      </ul>
+      <p>Difficulty (chosen on the title screen): <b>Tiro</b> the AI earns 20% less and attacks later · <b>Legatus</b> an even fight · <b>Imperator</b> the AI earns 25% more and attacks sooner.</p>
+      <h4>Economy</h4>
+      <ul>
+        <li>A province's land produces plains and steppe → food, forests → wood, hills and mountains → stone. That income is <b>split between its settlements</b> (the major city takes the biggest slice, each town a smaller one), and goes to whoever holds each. Hold every settlement of a province and it yields <b>+12%</b>. The major city also colours the province on the map.</li>
+        <li>Every city produces gold plus a specialty. Armies eat food every second, more when they campaign outside your own land, and soldiers draw <b>pay in gold</b> (horses and elephants count twice). If food runs out armies starve; if gold runs out soldiers desert.</li>
+        <li>Stone raises walls and forts and builds siege engines; wood feeds archers, siege engines and forts.</li>
+        <li><b>Market</b> (in your major cities): buy 100 food, wood or stone for 130 gold, or sell 100 for 70 (Carthage trades at 110 and 95).</li>
+      </ul>
+      <h4>Building</h4>
+      <ul>
+        <li>Select one of your cities to <b>recruit</b> troops (they muster beside the city) or <b>raise walls</b> (up to level 3). Walls multiply the militia's defense.</li>
+        <li><b>Improvements</b> (a major city has two slots, a town one): <b>Farmlands</b> +0.9 food/s · <b>Forum</b> +0.8 gold/s · <b>Barracks</b> recruit 30% faster and +70 militia · <b>Temple</b> loyalty returns 3× faster and half the overstretch penalty. An enemy who takes the city loots the last one.</li>
+        <li><b>Forts</b> are built inside your provinces: they block the road (enemies at war must storm them) and <b>guard the countryside</b>: enemy armies within 6 squares of a fort cannot plunder.</li>
+      </ul>
+      <h4>Battles: automatic, but decided by strategy</h4>
+      <ul>
+        <li><b>Retreat</b>: once the lines have met, an attacking or field army can pull out. It saves what is left, minus 6–40% to the pursuit (more if the enemy has cavalry, siege engines are half lost). Defenders cannot leave their walls.</li>
+        <li>Counters: spearmen ×1.9 vs cavalry · cavalry ×2 vs archers and siege, and ×1.8 on the charge · archers fire three volleys before the lines meet.</li>
+        <li>An army waiting in forest, hills or mountains defends better; attacking across a river is a −20% penalty; attacking from two sides is a +25% bonus.</li>
+        <li><b>Stance:</b> Aggressive hits harder; Testudo (a defensive stance for the other powers) defends better and makes legionaries nearly immune to arrows.</li>
+        <li>Every 2 siege engines remove one wall level during an assault. Cavalry is weak in assaults and rough ground.</li>
+        <li>Armies that lose rout home; cavalry on the winning side cuts them down as they flee. Winning battles earns veteran stars.</li>
+        <li>Select your army, then point at a target: you'll see the <b>odds</b> before you commit.</li>
+      </ul>
+      <h4>The four powers</h4>
+      <ul id="eliteHelp"></ul>
+      <h4>Autoplay</h4>
+      <p>From the title screen (or the pause menu, mid-campaign) you can let the AI run all four powers and just watch. The camera follows the biggest battles and conquests; drag or zoom to take it over, press <b>Follow</b> (F) to give it back. Click a power in the standings to see its treasury, click any army to follow it.</p>
+      <h4>Saving</h4>
+      <p>Your campaign is saved in this browser whenever you leave the page, open the menu or return to the title screen, and every few seconds while you play. Press <b>Continue</b> on the title screen to pick it up where you left off. A finished campaign is not kept.</p>
+      <h4>Reading the map</h4>
+      <p>Each power's land is tinted in its colour, with a stronger glow along its borders; unclaimed land is greyed out. Zoom out and the colours get stronger, or switch to the <b>Political</b> map (P) for flat colours.</p>
+      <h4>Controls</h4>
+      <p class="desk-only">Left-click select (Shift adds armies) · Right-click: march / attack / merge / station · Drag to pan · Wheel zoom · WASD pan · Space pause · 1–4 speed · P political map · F follow camera (autoplay) · H back home · Esc cancel</p>
+      <p class="touch-only">Tap to select · With an army selected, tap the map to march or a target for options · Drag to pan · Pinch to zoom</p>
+      <div style="text-align:center;margin-top:16px"><button class="big-btn" id="helpClose">Back to the map</button></div>
+    </div>
+  </div>
+
+  <div id="over" class="screen hidden">
+    <div class="pnl tablet" style="max-width:660px">
+      <h2 class="res-title" id="resTitle">Victory</h2>
+      <p class="tag" id="resTag"></p>
+      <div class="stats">
+        <div class="stat"><b id="stProv">0</b><span>Provinces</span></div>
+        <div class="stat"><b id="stWon">0</b><span>Battles won</span></div>
+        <div class="stat"><b id="stCap">0</b><span>Cities taken</span></div>
+        <div class="stat"><b id="stTime">0</b><span>Campaign time</span></div>
+      </div>
+      <button class="big-btn" id="againBtn">New campaign</button><br>
+      <button class="ghost-btn" id="otherBtn">Watch an autoplay war instead</button><br>
+      <button class="ghost-btn" id="keepBtn">Keep looking at the map</button>
+    </div>
+  </div>
+
+  <div id="loading" class="hidden">Forging a continent…</div>
+  <div id="fatal" class="hidden"><div><h2>WebGL isn't available</h2><p>This game needs a browser with WebGL enabled.</p></div></div>
+</div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

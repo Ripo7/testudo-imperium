@@ -1,0 +1,86 @@
+import { GS } from './game/state.js';
+import { Sfx } from './core/audio.js';
+import { camera, renderer, scene } from './render/renderer.js';
+import { buildEnvironment } from './render/world.js';
+import { updateDust } from './render/overlays.js';
+import { CAM, projectCell, updateCameraRig } from './render/camera.js';
+import { buildCrowdGeos, updateCrowds } from './render/crowds.js';
+import { simStep } from './game/sim.js';
+import { _pp, UI } from './ui/state.js';
+import { renderPanel } from './ui/panel.js';
+import { defaultHint, updateHUD, updateLog } from './ui/hud.js';
+import { $labels, updateLabels, updateSelectionVisuals } from './ui/labels.js';
+import { keyboardPan } from './ui/input.js';
+import { prepareCampaign } from './ui/screens.js';
+import { clearSave, loadSave, resumeCampaign, saveGame, showTitle } from './game/save.js';
+import { updateDirector } from './ui/director.js';
+
+import { initAtmosphere } from './render/atmosphere.js';
+import { initPanel } from './ui/panel.js';
+import { initScreens } from './ui/screens.js';
+
+/* =========================================================
+   Boot & loop
+   ========================================================= */
+initAtmosphere();
+initPanel();
+initScreens();
+buildEnvironment();
+buildCrowdGeos();
+
+// Start from (in order) the state handed over by a live page update, the save in this browser, or a fresh continent.
+function boot(data) {
+  const hotSave = data && data.save;
+  const saved = hotSave || loadSave();
+  let restored = false;
+  if (saved) {
+    try { prepareCampaign(0, saved); restored = true; }
+    catch (e) { clearSave(); }
+  }
+  if (!restored) prepareCampaign((Math.random() * 1e9) | 0);
+  if (restored && hotSave && data.mode === 'play') resumeCampaign();
+  else showTitle();
+  requestAnimationFrame(frame);
+}
+
+let last = performance.now(), testFreeze = false, testNoRender = false, battleSoundT = 0, saveT = 15;
+// test hooks (see src/debug.js)
+export function setTestNoRender(v) { testNoRender = v; }
+export function setTestFreeze(v) { testFreeze = v; }
+function frame(now) {
+  requestAnimationFrame(frame);
+  const rawDt = Math.max(0, (now - last) / 1000);
+  const rdt = Math.min(0.05, rawDt);
+  last = now;
+  if (!testFreeze && UI.mode === 'play' && GS.speed > 0 && !GS.over) {
+    let s = Math.min(0.25, rawDt) * GS.speed;
+    while (s > 1e-4) { const st = Math.min(0.1, s); simStep(st); s -= st; }
+  }
+  if (UI.mode === 'title') { UI.t0 = (UI.t0 || 0) + rdt; CAM.tx += Math.sin(UI.t0 * 0.05) * rdt * 2.5; CAM.tz += Math.cos(UI.t0 * 0.04) * rdt * 1.5; CAM.td = 115; }
+  keyboardPan(rdt);
+  updateDirector(rdt);
+  updateCameraRig(rdt);
+  UI.t += rdt * (GS.speed > 0 || UI.mode !== 'play' ? 1 : 0.15);
+  updateCrowds(UI.t);
+  updateDust(rdt);
+  if (UI.mode === 'play') {
+    updateSelectionVisuals();
+    UI.hudT -= rdt;
+    if (UI.hudT <= 0) { UI.hudT = 0.25; updateHUD(); renderPanel(false); updateLog(); defaultHint(); }
+    saveT -= rdt;
+    if (saveT <= 0) { saveT = 15; saveGame(); }
+    battleSoundT -= rdt;
+    if (battleSoundT <= 0 && GS.speed > 0) {
+      battleSoundT = 0.35;
+      const vis = GS.battles.some((B) => !B.done && projectCell(B.x, B.y, 0, _pp).vis && _pp.x > 0 && _pp.x < window.innerWidth && _pp.y > 0 && _pp.y < window.innerHeight);
+      if (vis && CAM.d < 110) { if (Math.random() < 0.5) Sfx.clang(); else Sfx.hit(); }
+    }
+  }
+  $labels.style.visibility = UI.mode === 'title' ? 'hidden' : 'visible';
+  updateLabels();
+  if (!testNoRender) renderer.render(scene, camera);
+}
+boot({});
+
+// ?test exposes the game's internals for the browser tests (src/debug.js)
+if (new URLSearchParams(location.search).has('test')) import('./debug.js');
