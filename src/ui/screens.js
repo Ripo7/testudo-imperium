@@ -13,7 +13,7 @@ import { initCampaign } from '../game/campaign.js';
 import { resetPathfinder } from '../game/armies.js';
 import { $log, $panel, $tip, clearSel, hidePopup, setME, SPECT, stopPlacing, UI } from './state.js';
 import { renderPanel } from './panel.js';
-import { defaultHint, focusOn, goTo, log, logItems, resetCrest, updateHUD } from './hud.js';
+import { applyPanels, defaultHint, focusOn, goTo, log, logItems, PANELS, resetCrest, updateHUD } from './hud.js';
 import { chartHover, chartLeave, renderReport, REP } from './report.js';
 import { clock } from './format.js';
 import { buildMapLabels } from './labels.js';
@@ -141,6 +141,11 @@ export function setMuteIcon() {
 export function drawPowers() {
   $('powers').innerHTML = FACTIONS.map((F, i) => `<button class="power${i === (UI.pick || 0) ? ' on' : ''}" data-pick="${i}" style="--fc:${F.css}" title="${F.perk.name}: ${F.perk.desc} ${SIG[i].desc}"><i></i>${F.name}<small>${SIG[i].name}<br>${F.perk.name}</small></button>`).join('');
 }
+// the pause menu's switches for the floating panels
+export function drawShowOpts() {
+  $('showOpts').innerHTML = '<span>On screen</span>' + PANELS.map(([k, n]) => `<button data-show="${k}" class="${UI.show[k] !== false ? 'on' : ''}" aria-pressed="${UI.show[k] !== false}">${n}</button>`).join('')
+    + '<p>The eye in the top bar hides them all at once, to clear the map.</p>';
+}
 export function drawDiff() {
   $('diffSel').innerHTML = DIFFS.map((d, i) => `<button data-d="${i}" class="${i === UI.diff ? 'on' : ''}" title="${d.note}">${d.name}</button>`).join('')
     + `<button data-fog class="fog${UI.fog ? ' on' : ''}" title="Enemy armies are hidden outside the sight of your cities, armies and forts">Fog of war: ${UI.fog ? 'on' : 'off'}</button>`
@@ -153,6 +158,15 @@ export function initScreens() {
   UI.pick = store.get('testudo.faction', 0);
   drawPowers();
   $('powers').addEventListener('click', (e) => { const b = e.target.closest('[data-pick]'); if (!b) return; UI.pick = +b.dataset.pick; store.set('testudo.faction', UI.pick); Sfx.click(); drawPowers(); showTitle(); });
+  UI.show = Object.assign({ stand: true, alerts: true, log: true, hint: true }, store.get('testudo.show', {}));
+  UI.mapView = !!store.get('testudo.mapView', false);
+  drawShowOpts(); applyPanels();
+  $('showOpts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-show]'); if (!b) return;
+    UI.show[b.dataset.show] = UI.show[b.dataset.show] === false;
+    store.set('testudo.show', UI.show);
+    Sfx.click(); drawShowOpts(); applyPanels();
+  });
   UI.diff = store.get('testudo.diff', 1);
   UI.fog = store.get('testudo.fog', true);
   $('diffSel').addEventListener('click', (e) => {

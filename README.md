@@ -10,7 +10,7 @@ Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a 
 - **Battles decided by strategy**: terrain, rivers, walls, flanks, stance and the odds you accept. Retreat when a battle turns.
 - **An economy of land and cities**: provinces share their land income between settlements, cities take improvements (farmlands, forum, barracks, temple), soldiers draw pay, and conquered cities can revolt.
 - **War and peace**: powers stay at peace until one declares war. Wars wear both sides down until they sign a treaty, with tribute paid by the loser.
-- **Know what's going on**: dispatches flag what needs attention now (cities under assault, enemy armies closing in, plunder, famine, unrest, a rival nearing victory), the Overview shows your treasury, armies, cities and wars, and the chronicle records the whole war. When it ends, a report charts how it went.
+- **Know what's going on**: dispatches flag what needs attention now (cities under assault, enemy armies closing in, plunder, famine, unrest, a rival nearing victory), the Overview shows your treasury, armies, cities and wars, and the chronicle records the whole war. When it ends, a report charts how it went, economy included. On a phone, the eye in the top bar clears every panel off the map.
 - **Autoplay** to watch four AI empires fight it out through the eyes of the power you follow, and take command of it at any moment. Three difficulty levels, and saves that survive closing the tab.
 
 ![The end-of-war report](docs/screenshot-report.jpg)

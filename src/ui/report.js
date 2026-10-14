@@ -7,8 +7,9 @@ import { clock, FCHART, fmt, fmtInt, GLYPH } from './format.js';
 import { deadOf, eventInfo, eventRow } from './overview.js';
 
 /* =========================================================
-   The end-of-war report: how it ended, how it went (two charts over time),
-   every power's numbers, each war, and the moments that decided it.
+   The end-of-war report: how it ended, how it went (points and men over time),
+   every power's numbers, its economy (income over time, what it earned and spent),
+   each war, and the moments that decided it.
    Charts: one line per power in its chart colour (FCHART), a legend and direct labels,
    a crosshair with the values at any moment, and a table view of the same numbers.
    ========================================================= */
@@ -41,12 +42,12 @@ export function reportData() {
   const winner = GS.over === 'auto' ? GS.winner : GS.over === 'win' ? PLAYER : GS.rivalF >= 0 ? GS.rivalF : -1;
   const series = (off) => GS.factions.map((F, i) => {
     const xs = [], ys = [];
-    for (const r of GS.hist) { if (!F.alive && r[0] >= F.eliminatedAt) break; xs.push(r[0]); ys.push(r[off + i]); }
-    if (!F.alive) { xs.push(Math.round(F.eliminatedAt)); ys.push(0); }   // wiped out: no city, no army left
+    for (const r of GS.hist) { if (!F.alive && r[0] >= F.eliminatedAt) break; if (r[off + i] == null) continue; xs.push(r[0]); ys.push(r[off + i]); }
+    if (!F.alive && xs.length) { xs.push(Math.round(F.eliminatedAt)); ys.push(0); }   // wiped out: no city, no army left
     return { f: i, name: F.name, color: FCHART[i], xs, ys, fell: !F.alive, fellAt: F.eliminatedAt };
   });
   const rank = GS.factions.slice().sort((a, b) => (b.id === winner) - (a.id === winner) || (b.alive - a.alive) || (a.alive ? b.pts - a.pts : b.eliminatedAt - a.eliminatedAt));
-  return { T, winner, rank, pts: series(1), men: series(1 + n), wars: warsFromChron() };
+  return { T, winner, rank, pts: series(1), men: series(1 + n), inc: series(1 + 2 * n), wars: warsFromChron() };
 }
 
 /* ---------- sections ---------- */
@@ -60,7 +61,10 @@ export function finalHtml(R) {
 const niceStep = (max, n) => { const raw = max / n, p = 10 ** Math.floor(Math.log10(raw)), k = raw / p; return (k <= 1 ? 1 : k <= 2 ? 2 : k <= 5 ? 5 : 10) * p; };
 const ticks = (max, n) => { const st = niceStep(max, n), out = [0]; while (out[out.length - 1] < max - 1e-6) out.push(out[out.length - 1] + st); return { list: out, top: out[out.length - 1] }; };
 export function lineChart(id, W, H, S, opt) {
-  const m = { l: 38, r: W < 480 ? 78 : 96, t: 14, b: opt.marks ? 40 : 26 };
+  // the right margin holds the direct labels: as wide as the longest one (about 6.6 px a character at 12 px)
+  const tag = (L) => (L.fell ? `fell ${clock(L.fellAt)}` : opt.fmtY(L.ys[L.ys.length - 1]));
+  const longest = Math.max(10, ...S.filter((L) => L.xs.length).map((L) => (L.name + ' ' + tag(L)).length));
+  const m = { l: 38, r: Math.min(Math.round(W * 0.4), 24 + Math.ceil(longest * 6.6)), t: 14, b: opt.marks ? 40 : 26 };
   const pw = Math.max(60, W - m.l - m.r), ph = H - m.t - m.b, T = opt.T;
   const yt = ticks(opt.max, H < 200 ? 3 : 4), yMax = yt.top;
   const X = (t) => m.l + (t / T) * pw, Y = (v) => m.t + ph - (v / yMax) * ph;
@@ -93,7 +97,7 @@ export function lineChart(id, W, H, S, opt) {
     if (e.ref) { s += `<text class="refl" x="${lx}" y="${e.ly + 4}">Victory <tspan>${e.v}</tspan></text>`; continue; }
     s += `<circle class="end" cx="${e.x}" cy="${e.y}" r="4" fill="${e.L.color}"/>`;
     if (e.L.fell) s += `<path class="fellx" d="M${e.x - 4} ${e.y - 12}l7 7M${e.x + 3} ${e.y - 12}l-7 7"/>`;
-    s += `<line class="lk" stroke="${e.L.color}" x1="${lx}" x2="${lx + 10}" y1="${e.ly}" y2="${e.ly}"/><text class="dl" x="${lx + 14}" y="${e.ly + 4}">${e.L.name} <tspan>${e.L.fell ? `fell ${clock(e.L.fellAt)}` : opt.fmtY(e.v)}</tspan></text>`;
+    s += `<line class="lk" stroke="${e.L.color}" x1="${lx}" x2="${lx + 10}" y1="${e.ly}" y2="${e.ly}"/><text class="dl" x="${lx + 14}" y="${e.ly + 4}">${e.L.name} <tspan>${tag(e.L)}</tspan></text>`;
   }
   s += `<g class="xh" visibility="hidden"><line x1="0" x2="0" y1="${m.t}" y2="${m.t + ph}"/>${S.map((L) => `<circle r="4.5" fill="${L.color}"/>`).join('')}</g>`;
   s += `<rect class="hit" x="${m.l}" y="${m.t}" width="${pw}" height="${ph + (opt.marks ? 30 : 0)}"/></svg>`;
@@ -112,8 +116,8 @@ export function chartTable(S, T, fmtY) {
   return `<div class="tblwrap"><table class="ledger"><thead><tr><th scope="col">Time</th>${S.map((L) => `<th scope="col">${L.name}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 }
 export function chartBlock(id, title, sub, W, H, S, opt) {
-  const tbl = REP.table[id];
-  return `<section class="rep-chart" data-chart="${id}"><div class="rep-h"><h3>${title}</h3><button class="ghost-btn tbtn" data-tbl="${id}">${tbl ? 'Show the chart' : 'Show as a table'}</button></div><p class="rep-sub">${sub}</p>`
+  const tbl = REP.table[id], hx = opt.h || 'h3';
+  return `<section class="rep-chart" data-chart="${id}"><div class="rep-h"><${hx}>${title}</${hx}><button class="ghost-btn tbtn" data-tbl="${id}">${tbl ? 'Show the chart' : 'Show as a table'}</button></div>${sub ? `<p class="rep-sub">${sub}</p>` : ''}`
     + (tbl ? chartTable(S, opt.T, opt.fmtY) : `${legend(S)}<div class="chwrap">${lineChart(id, W, H, S, opt)}<div class="ctip hidden"></div></div>${opt.marks ? '<p class="rep-key"><span class="k war"></span>war declared <span class="k peace"></span>peace made <span class="k fall"></span>a power wiped out</p>' : ''}`)
     + '</section>';
 }
@@ -123,17 +127,73 @@ export function ledgerHtml(R) {
     ['Victory points', (f) => GS.factions[f].pts, 1], ['Provinces held', provinces, 1], ['Largest army', (f) => S[f].peak, 1], ['Men raised', (f) => S[f].raised, 0],
     ['Battles won', (f) => S[f].won, 1], ['Battles lost', (f) => S[f].lost, 0], ['Enemies killed', (f) => S[f].kills, 1], ['Men lost', (f) => S[f].dead, 0],
     ['Cities taken', (f) => S[f].captured, 1], ['Cities lost', (f) => S[f].lostC, 0], ['Revolts', (f) => S[f].revolts, 0],
-    ['Wars declared', (f) => S[f].wars, 0], ['Peace treaties', (f) => S[f].peaces, 0], ['Tribute paid', (f) => S[f].tribP, 0], ['Tribute received', (f) => S[f].tribR, 0],
-    ['Walls and buildings', (f) => S[f].works, 0],
+    ['Wars declared', (f) => S[f].wars, 0], ['Peace treaties', (f) => S[f].peaces, 0], ['Walls and buildings raised', (f) => S[f].works, 0],
   ];
   const ids = R.rank.map((F) => F.id);
-  let h = '<section class="rep-ledger"><h3>The ledger</h3><p class="rep-sub">Every power\'s numbers, from the first day to the last. The best in each of the leading rows is marked.</p><div class="tblwrap"><table class="ledger"><thead><tr><th></th>'
+  let h = '<section class="rep-ledger"><h3>The ledger</h3><p class="rep-sub">Land, armies and battles, from the first day to the last. The best in each of the leading rows is marked.</p><div class="tblwrap"><table class="ledger"><thead><tr><th></th>'
     + ids.map((f) => `<th scope="col" class="${!GS.auto && f === PLAYER ? 'me' : ''}">${sw(f)}${FACTIONS[f].name}</th>`).join('') + '</tr></thead><tbody>';
   for (const [name, get, hi] of rows) {
     const vals = ids.map(get), top = best(vals);
     h += `<tr><th scope="row">${name}</th>${vals.map((v, i) => `<td class="${hi && v === top && v > 0 ? 'top' : ''}${!GS.auto && ids[i] === PLAYER ? ' me' : ''}">${fmtInt(v)}</td>`).join('')}</tr>`;
   }
   return h + '</tbody></table></div></section>';
+}
+/* ---------- the economy ---------- */
+// [group, [label, value from the power's stats (s) and the power (F), 'total' | 'time' | undefined]]
+export const ECON_ROWS = [
+  ['Earned', [
+    ['All resources', (s) => s.eGold + s.eFood + s.eWood + s.eStone, 'total'],
+    ['Gold', (s) => s.eGold], ['Food', (s) => s.eFood], ['Wood', (s) => s.eWood], ['Stone', (s) => s.eStone],
+  ]],
+  ['Spent', [
+    ['Soldiers\' pay, in gold', (s) => s.pay], ['Feeding the armies, in food', (s) => s.feed], ['Recruiting', (s) => s.sRec],
+    ['Walls, improvements and forts', (s) => s.sBuild], ['Bought at the market, in gold', (s) => s.mBuy], ['Tribute paid, in gold', (s) => s.tribP],
+  ]],
+  ['Received', [['Sold at the market, in gold', (s) => s.mSell], ['Tribute received, in gold', (s) => s.tribR]]],
+  ['Lost', [['Land income lost to plunder', (s) => s.plund], ['Time with empty granaries', (s) => s.starveT, 'time'], ['Time with soldiers unpaid', (s) => s.unpaidT, 'time']]],
+  ['Left at the end', [['Gold in the treasury', (s, F) => F.res.gold], ['Food, wood and stone in store', (s, F) => F.res.food + F.res.wood + F.res.stone]]],
+];
+export const earnedOf = (s) => s.eGold + s.eFood + s.eWood + s.eStone;
+// a few plain sentences: who was richest, who spent most on armies, on building, who suffered from plunder or hunger
+export function econInsights(ids) {
+  const S = GS.fstats, name = (f) => FACTIONS[f].name;
+  const top = (fn) => ids.reduce((b, f) => (fn(f) > fn(b) ? f : b), ids[0]);
+  const all = ids.reduce((m, f) => m + earnedOf(S[f]), 0);
+  if (all < 1) return '';
+  const out = [];
+  const rich = top((f) => earnedOf(S[f]));
+  out.push(`${name(rich)} earned the most: ${fmtInt(earnedOf(S[rich]))} in gold, food, wood and stone, ${Math.round((earnedOf(S[rich]) / all) * 100)}% of everything the continent produced.`);
+  const army = (f) => S[f].pay + S[f].feed + S[f].sRec, a = top(army);
+  out.push(`${a === rich ? 'It also' : name(a)} put the most into its armies: ${fmtInt(army(a))} on pay, food and recruits.`);
+  const b = top((f) => S[f].sBuild);
+  if (S[b].sBuild > 0) out.push(`${name(b)} built the most, with ${fmtInt(S[b].sBuild)} spent on walls, improvements and forts.`);
+  const p = top((f) => S[f].plund);
+  if (S[p].plund >= 50) out.push(`${name(p)} suffered most from plunder, losing ${fmtInt(S[p].plund)} of its land income.`);
+  const h = top((f) => S[f].starveT + S[f].unpaidT), ht = S[h].starveT + S[h].unpaidT;
+  if (ht >= 20) out.push(`${name(h)} spent ${clock(ht)} with ${S[h].starveT >= S[h].unpaidT ? 'its granaries empty' : 'its soldiers unpaid'}${S[h].starveT > 0 && S[h].unpaidT > 0 ? ' or short of the other' : ''}, and its armies melted away.`);
+  return out.join(' ');
+}
+export function econHtml(R, W, phone) {
+  const ids = R.rank.map((F) => F.id), S = GS.fstats;
+  let h = `<section class="rep-econ"><h3>Economy</h3><p class="rep-sub">${econInsights(ids)}</p>`;
+  if (R.inc.some((L) => L.xs.length > 1)) {
+    const maxInc = Math.max(5, ...R.inc.flatMap((L) => L.ys));
+    h += chartBlock('inc', 'Income per second', 'Gold, food, wood and stone coming in, added up, before soldiers\' pay and food.', W, phone ? 170 : 200, R.inc,
+      { T: R.T, max: maxInc, fmtY: (v) => String(Math.round(v * 10) / 10), label: 'Income per second of each power over time', h: 'h4' });
+  }
+  h += '<div class="tblwrap"><table class="ledger econ"><thead><tr><th></th>' + ids.map((f) => `<th scope="col" class="${!GS.auto && f === PLAYER ? 'me' : ''}">${sw(f)}${FACTIONS[f].name}</th>`).join('') + '</tr></thead><tbody>';
+  for (const [group, rows] of ECON_ROWS) {
+    h += `<tr class="grp"><th scope="rowgroup" colspan="${ids.length + 1}">${group}</th></tr>`;
+    for (const [label, get, kind] of rows) {
+      const gone = (f) => group === 'Left at the end' && !GS.factions[f].alive;   // wiped out: nothing left to count
+      const vals = ids.map((f) => (gone(f) ? 0 : Math.max(0, get(S[f], GS.factions[f])))), top = Math.max(...vals);
+      h += `<tr class="${kind === 'total' ? 'total' : ''}"><th scope="row">${label}</th>` + vals.map((v, i) => {
+        const txt = gone(ids[i]) ? '–' : kind === 'time' ? (v >= 1 ? clock(v) : '–') : fmtInt(v), w = top > 0 ? (v / top) * 100 : 0;
+        return `<td class="${!GS.auto && ids[i] === PLAYER ? 'me' : ''}">${txt}<i class="cb" style="width:${w.toFixed(1)}%"></i></td>`;
+      }).join('') + '</tr>';
+    }
+  }
+  return h + '</tbody></table></div><p class="rep-sub">Each bar compares the four powers on that row. Spending on recruits and buildings adds up every resource it took.</p></section>';
 }
 export function warsHtml(R) {
   if (!R.wars.length) return '<section class="rep-wars"><h3>Wars</h3><p class="rep-sub">No power ever declared war: the continent was settled without a fight.</p></section>';
@@ -146,7 +206,7 @@ export function warsHtml(R) {
     const took = [w.f, w.g].filter((f) => w.took[f]).map((f) => `${FACTIONS[f].name} took ${w.took[f]} cit${w.took[f] > 1 ? 'ies' : 'y'}`);
     const cost = w.battles ? `${w.battles} battle${w.battles > 1 ? 's' : ''}, ${fmtInt(w.dead[w.f])} ${F.adj} and ${fmtInt(w.dead[w.g])} ${G.adj} dead.` : 'No battle was fought.';
     h += `<div class="gw"><div class="gl">${sw(w.f)}<b>${F.name}</b> on ${sw(w.g)}<b>${G.name}</b><em>${clock(w.start)} to ${w.end == null ? 'the end' : clock(w.end)}</em></div>`
-      + `<div class="gt"><i style="left:${pct(w.start)};width:max(3px, ${pct(end - w.start)})"><b style="background:${FCHART[w.f]}"></b><b style="background:${FCHART[w.g]}"></b></i>${w.how === 'peace' ? `<span class="ge peace" style="left:${pct(end)}">${GLYPH.dove}</span>` : w.how === 'fall' ? `<span class="ge fall" style="left:${pct(end)}">${GLYPH.skull}</span>` : ''}</div>`
+      + `<div class="gt"><i style="left:${pct(w.start)};width:max(3px, ${pct(end - w.start)})"><b style="background:${FCHART[w.f]}"></b><b style="background:${FCHART[w.g]}"></b></i>${w.how === 'peace' ? `<span class="ge peace" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.dove}</span>` : w.how === 'fall' ? `<span class="ge fall" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.skull}</span>` : ''}</div>`
       + `<p>${w.broke ? `${F.name} broke a treaty to start it. ` : ''}${how} ${took.length ? took.join(', ') + '. ' : ''}${cost}</p></div>`;
   }
   return h + `<div class="gw scale"><div></div><div class="gs"><span>0:00</span><span>${clock(T)}</span></div></div></div></section>`;
@@ -174,7 +234,7 @@ export function renderReport() {
     const maxMen = Math.max(500, ...R.men.flatMap((L) => L.ys));
     h += chartBlock('men', 'Men under arms', 'The size of every army in the field, added up.', W, phone ? 160 : 190, R.men, { T: R.T, max: maxMen, fmtY: fmt, label: 'Men under arms of each power over time' });
   } else h += '<p class="rep-sub">This war was resumed from an older save, so there is no record of how it went before.</p>';
-  h += ledgerHtml(R) + warsHtml(R) + momentsHtml();
+  h += ledgerHtml(R) + econHtml(R, W, phone) + warsHtml(R) + momentsHtml();
   el.innerHTML = h;
 }
 // crosshair: the values of every power at the moment under the pointer
