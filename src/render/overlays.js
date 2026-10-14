@@ -1,3 +1,4 @@
+import { canSee, SIGHT } from '../game/sight.js';
 import { THREE } from '../three.js';
 import { MAP } from '../game/state.js';
 import { rand } from '../core/util.js';
@@ -45,6 +46,7 @@ export const dustTex = (() => {
 })();
 export const dustPool = [];
 export function dust(wx, wy, wz, n, spread, life, color) {
+  if (SIGHT.on && !canSee(wx + (MAP.W - 1) / 2, wz + (MAP.H - 1) / 2)) return;   // no dust clouds giving away hidden armies
   for (let i = 0; i < n; i++) {
     let d = dustPool.find((p) => !p.on);
     if (!d) {

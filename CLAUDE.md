@@ -15,7 +15,9 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 - A module only assigns its own top-level `let` bindings. Other modules go through setters (`setMap`, `setME`, `resetPathfinder`, `resetCrest`), because ES imports are read-only.
 - Module top-level code must not depend on other modules' constants at load time. DOM wiring and material patches that need other modules go in `init*()` functions, which `main.js` calls in order (`initAtmosphere`, `initPanel`, `initScreens`).
 - The simulation (`src/game/`) must not depend on rendering. Tests run it with `setNoRender(true)` and call `simStep(0.1)` directly.
-- `?test` loads `src/debug.js`, which exposes every module export as `window.__T`.
+- `?test` loads `src/debug.js`, which exposes every export of every module (picked up automatically) as `window.__T`.
+- Two terrain costs: `MAP.cost` is the builders' cost, used to lay out provinces and roads; changing it changes every map, and so breaks existing saves. `MAP.move` is the marching cost used by armies and pathfinding, and it can be tuned freely (`TERRAIN_MOVE` and `MOVE` in `map/generate.js`).
+- Fog of war lives in `game/sight.js`. Rendering, labels, hit-testing and panels hide what `seesArmy`, `seesBattle` and `seesCity` say Rome can't see. The AI ignores the fog.
 
 ## Behaviour to preserve
 

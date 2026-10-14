@@ -1,4 +1,5 @@
 import { THREE } from '../three.js';
+import { seesArmy } from '../game/sight.js';
 import { GS } from '../game/state.js';
 import { clamp, isTouch, smooth, TAU } from '../core/util.js';
 import { rng32 } from '../map/generate.js';
@@ -352,7 +353,7 @@ export function updateCrowds(t) {
   const dt = clamp(t - crowdLastT, 0, 0.1); crowdLastT = t;
   const used = {}; for (const k of CROWD_TYPES) used[k] = 0;
   for (const a of GS.armies) {
-    if (a.dead) continue;
+    if (a.dead || !seesArmy(a)) continue;
     const L = armyLayout(a);
     const col = FCOL[a.owner];
     const moving = a.state === 'move' || a.state === 'rout';

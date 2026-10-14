@@ -6,6 +6,8 @@ import { DETAIL_TEX, TERRAIN_MAT } from './terrain.js';
 import { RIVER_MAT, RIVER_U, WATER_MAT, WATER_U } from './water.js';
 import { FLORA_MAT } from './vegetation.js';
 import { FIELD_MAT, ROAD_MAT } from './cities.js';
+import { MAP } from '../game/state.js';
+import { SIGHT } from '../game/sight.js';
 
 /* =========================================================
    Atmosphere: golden afternoon light, cool shadows, drifting
@@ -24,6 +26,40 @@ export const CLOUD_GLSL = [
   '  return smoothstep(0.53, 0.67, a);',
   '}',
 ].join('\n');
+// fog of war: outside Rome's sight the world is greyed and darkened (see game/sight.js)
+export const FOW_U = { uFowTex: { value: null }, uFowOn: { value: 0 }, uFowXf: { value: new THREE.Vector4(1, 1, 0.5, 0.5) } };
+export const FOW_GLSL = [
+  'uniform sampler2D uFowTex;', 'uniform float uFowOn;', 'uniform vec4 uFowXf;',
+  'vec3 fowApply(vec3 c, vec2 p) {',
+  '  if (uFowOn < 0.5) return c;',
+  '  float v = texture2D(uFowTex, p * uFowXf.xy + uFowXf.zw).r;',
+  '  float l = dot(c, vec3(0.299, 0.587, 0.114));',
+  '  vec3 f = mix(vec3(l), c, 0.3) * 0.56 + vec3(0.012, 0.018, 0.032);',
+  '  return mix(f, c, smoothstep(0.12, 0.62, v));',
+  '}',
+].join('\n');
+{
+  const t = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+  t.needsUpdate = true; FOW_U.uFowTex.value = t;
+}
+let fowVersion = -1;
+export function updateFogTexture() {
+  FOW_U.uFowOn.value = SIGHT.on ? 1 : 0;
+  if (!SIGHT.on || SIGHT.version === fowVersion) return;
+  fowVersion = SIGHT.version;
+  const { W, H } = MAP, g = SIGHT.grid;
+  let t = FOW_U.uFowTex.value;
+  if (t.image.width !== W || t.image.height !== H) {
+    t.dispose();
+    t = new THREE.DataTexture(new Uint8Array(W * H * 4), W, H, THREE.RGBAFormat);
+    t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter;
+    FOW_U.uFowTex.value = t;
+    FOW_U.uFowXf.value.set(1 / W, 1 / H, 0.5, 0.5);   // world x = cell x - (W - 1) / 2
+  }
+  const d = t.image.data;
+  for (let i = 0; i < g.length; i++) { const v = g[i]; d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v; d[i * 4 + 3] = 255; }
+  t.needsUpdate = true;
+}
 // patch a lit material so the sun is dimmed under passing clouds
 export function withClouds(mat) {
   if (mat.userData.clouds) return mat;
@@ -31,7 +67,7 @@ export function withClouds(mat) {
   const prev = mat.onBeforeCompile, prevKey = mat.customProgramCacheKey;
   mat.onBeforeCompile = (sh, r) => {
     if (prev) prev.call(mat, sh, r);
-    Object.assign(sh.uniforms, CLOUD_U);
+    Object.assign(sh.uniforms, CLOUD_U, FOW_U);
     sh.vertexShader = 'varying vec3 vCloudWP;\n' + sh.vertexShader.replace('#include <project_vertex>', [
       '#include <project_vertex>',
       '{ vec4 cwp = vec4(transformed, 1.0);',
@@ -40,12 +76,12 @@ export function withClouds(mat) {
       '#endif',
       '  vCloudWP = (modelMatrix * cwp).xyz; }',
     ].join('\n'));
-    sh.fragmentShader = 'varying vec3 vCloudWP;\n' + CLOUD_GLSL + '\n' + sh.fragmentShader.replace('#include <lights_fragment_end>', [
+    sh.fragmentShader = 'varying vec3 vCloudWP;\n' + CLOUD_GLSL + '\n' + FOW_GLSL + '\n' + sh.fragmentShader.replace('#include <lights_fragment_end>', [
       '#include <lights_fragment_end>',
       '{ float cs = 1.0 - uCloudK * cloudMask(vCloudWP.xz); reflectedLight.directDiffuse *= cs; reflectedLight.directSpecular *= cs; }',
-    ].join('\n'));
+    ].join('\n')).replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = fowApply(gl_FragColor.rgb, vCloudWP.xz);');
   };
-  mat.customProgramCacheKey = () => (prevKey ? prevKey.call(mat) : '') + '+clouds';
+  mat.customProgramCacheKey = () => (prevKey ? prevKey.call(mat) : '') + '+clouds+fow';
   mat.needsUpdate = true;
   return mat;
 }
@@ -95,11 +131,11 @@ export function initAtmosphere() {
   for (const m of [TERRAIN_MAT, FLORA_MAT.soft, FLORA_MAT.flat, MAT.vc, ROAD_MAT, FIELD_MAT, MAT.crowd]) withClouds(m);
 
   // water and rivers dim under the clouds too
-  Object.assign(WATER_U, CLOUD_U); Object.assign(RIVER_U, CLOUD_U);
+  Object.assign(WATER_U, CLOUD_U, FOW_U); Object.assign(RIVER_U, CLOUD_U, FOW_U);
   WATER_MAT.fragmentShader = WATER_MAT.fragmentShader
-    .replace('#include <common>', '#include <common>\n' + CLOUD_GLSL)
-    .replace("  float alpha = mix(0.42", "  col *= 1.0 - uCloudK * 0.55 * cloudMask(vWP.xz) * inMap;\n  float alpha = mix(0.42");
+    .replace('#include <common>', '#include <common>\n' + CLOUD_GLSL + '\n' + FOW_GLSL)
+    .replace("  float alpha = mix(0.42", "  col *= 1.0 - uCloudK * 0.55 * cloudMask(vWP.xz) * inMap;\n  col = fowApply(col, vWP.xz);\n  float alpha = mix(0.42");
   RIVER_MAT.fragmentShader = RIVER_MAT.fragmentShader
-    .replace('#include <common>', '#include <common>\n' + CLOUD_GLSL)
-    .replace('  gl_FragColor = vec4(col, alpha);', '  col *= 1.0 - uCloudK * 0.55 * cloudMask(vWP.xz);\n  gl_FragColor = vec4(col, alpha);');
+    .replace('#include <common>', '#include <common>\n' + CLOUD_GLSL + '\n' + FOW_GLSL)
+    .replace('  gl_FragColor = vec4(col, alpha);', '  col *= 1.0 - uCloudK * 0.55 * cloudMask(vWP.xz);\n  col = fowApply(col, vWP.xz);\n  gl_FragColor = vec4(col, alpha);');
 }

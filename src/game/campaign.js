@@ -36,7 +36,7 @@ export function computeCityYield(c) {
 
 export function initCampaign(seed) {
   setMap(generateMap(seed));
-  Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, diff: UI.diff == null ? 1 : UI.diff,
+  Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, fog: false, diff: UI.diff == null ? 1 : UI.diff,
     fstats: FACTIONS.map(() => ({ won: 0, captured: 0 })) });
   GS.factions = FACTIONS.map((F, i) => ({
     id: i, ...F, res: { gold: 500, food: 500, wood: 400, stone: 300 },

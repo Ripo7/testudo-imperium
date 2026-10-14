@@ -1,7 +1,7 @@
 import { THREE } from '../three.js';
 import { MAP } from '../game/state.js';
 import { clamp, lerp, smooth, TAU } from '../core/util.js';
-import { BIOME, Heap, N8, rng32 } from '../map/generate.js';
+import { BIOME, rng32 } from '../map/generate.js';
 import { box, cone, cyl, MAT, merge, sph } from './renderer.js';
 import { cellToWorld, FLAG_MAT, worldGroup } from './world.js';
 import { CAM } from './camera.js';
@@ -59,61 +59,13 @@ ROAD_MAT.onBeforeCompile = (sh) => {
   sh.fragmentShader = 'uniform sampler2D uDet;\nvarying vec3 vRW;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n{ vec4 d = texture2D(uDet, vRW.xz * 0.6); diffuseColor.rgb *= 0.82 + 0.36 * d.b; }');
 };
 ROAD_MAT.customProgramCacheKey = () => 'road1';
-export function roadPath(a, b, onRoad) {
-  const { W, H, cost } = MAP;
-  const N = W * H, g = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
-  const s = a.cell, t = b.cell, tx = b.x, ty = b.y;
-  const hp = new Heap();
-  g[s] = 0; hp.push(0, s);
-  while (hp.size) {
-    const cur = hp.pop();
-    if (cur === t) break;
-    if (closed[cur]) continue;
-    closed[cur] = 1;
-    const cx = cur % W, cy = (cur / W) | 0;
-    for (const [dx, dy] of N8) {
-      const nx = cx + dx, ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-      const n = ny * W + nx;
-      let c = cost[n];
-      if (!(c < Infinity)) continue;
-      if (dx && dy && (!(cost[cy * W + nx] < Infinity) || !(cost[ny * W + cx] < Infinity))) continue;
-      c = Math.pow(c, 1.6) * (onRoad[n] ? 0.35 : 1) * (dx && dy ? 1.414 : 1);
-      const ng = g[cur] + c;
-      if (ng < g[n]) { g[n] = ng; came[n] = cur; hp.push(ng + Math.hypot(nx - tx, ny - ty) * 0.35, n); }
-    }
-  }
-  if (came[t] < 0) return null;
-  const path = [t]; let c = t;
-  while (c !== s) { c = came[c]; path.push(c); }
-  return path.reverse();
-}
 export function buildRoads() {
   const { W, H, cities, river } = MAP;
   roadMask = new Uint8Array(FW * FH);
   ROAD_U.uDet.value = DETAIL_TEX;
   for (const c of cities) { c.gates = []; c.theta = rng32(MAP.seed * 13 + c.id)() * Math.PI; }
-  // which cities are linked: a few nearest neighbours + every town to its province capital
-  const pairs = new Set(), list = [];
-  const addPair = (a, b) => { const k = Math.min(a.id, b.id) + ':' + Math.max(a.id, b.id); if (!pairs.has(k) && a !== b) { pairs.add(k); list.push([a, b, Math.hypot(a.x - b.x, a.y - b.y)]); } };
-  for (const c of cities) {
-    const near = cities.filter((o) => o !== c).map((o) => [o, Math.hypot(o.x - c.x, o.y - c.y)]).sort((p, q) => p[1] - q[1]);
-    const k = c.major ? 3 : 2;
-    for (let i = 0; i < Math.min(k, near.length); i++) if (near[i][1] < 17) addPair(c, near[i][0]);
-    if (!c.major) addPair(c, cities[MAP.provinces[c.prov].major]);
-  }
-  list.sort((p, q) => p[2] - q[2]);
-  const onRoad = new Uint8Array(W * H);
-  const polys = [];
-  for (const [a, b] of list) {
-    const path = roadPath(a, b, onRoad);
-    if (!path || path.length < 3) continue;
-    // skip a road that would just duplicate an existing one end to end
-    let fresh = 0; for (const n of path) if (!onRoad[n]) fresh++;
-    if (fresh < 3) continue;
-    for (const n of path) onRoad[n] = 1;
-    polys.push({ a, b, pts: path.map((n) => [n % W, (n / W) | 0]), cells: path });
-  }
+  // the road network itself is part of the map (map/generate.js): the game uses it for marching
+  const polys = MAP.roads.map((R) => ({ a: cities[R.a], b: cities[R.b], pts: R.cells.map((n) => [n % W, (n / W) | 0]), cells: R.cells }));
   const pos = [], col = [], idx = [];
   const bridges = [];
   const edgeC = new THREE.Color('#6a573c'), midC = new THREE.Color('#9e8963');

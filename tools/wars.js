@@ -16,18 +16,25 @@ export async function runWars({ url, n, workers = 3, fn, seed0 = Date.now() % 10
   const results = [];
   let next = 0;
   const worker = async () => {
-    const { ctx, page, errors } = await openGame(browser, url, { viewport: { width: 640, height: 400 } });
+    let G = await openGame(browser, url, { viewport: { width: 640, height: 400 } });
     while (next < n) {
       const k = next++;
       const seed = seed0 + k * 7919;
       const t0 = Date.now();
-      const r = await run(page, fn, seed);
-      r.seed = seed; r.wall = (Date.now() - t0) / 1000;
-      results.push(r);
-      if (onResult) onResult(r, results.length, n);
+      try {
+        const r = await run(G.page, fn, seed);
+        r.seed = seed; r.wall = (Date.now() - t0) / 1000;
+        results.push(r);
+        if (onResult) onResult(r, results.length, n);
+      } catch (e) {
+        // a crashed or stuck page shouldn't sink the whole batch: note it and carry on in a fresh page
+        console.log(`war with seed ${seed} failed: ${String(e.message || e).split('\n')[0]}`);
+        await G.ctx.close().catch(() => {});
+        G = await openGame(browser, url, { viewport: { width: 640, height: 400 } });
+      }
     }
-    if (errors.length) console.log('page errors:', errors.slice(0, 3));
-    await ctx.close();
+    if (G.errors.length) console.log('page errors:', G.errors.slice(0, 3));
+    await G.ctx.close();
   };
   try { await Promise.all(Array.from({ length: Math.min(workers, n) }, worker)); }
   finally { await browser.close(); }

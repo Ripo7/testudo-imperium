@@ -1,3 +1,5 @@
+import { groundInfo, mergeArmies, orderTarget, splitArmy } from '../game/armies.js';
+import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
 import { atWar, declareWar, mins, peaceAnswer, relOf, renewTreaty, suePeace, treatyAnswer, wearyWord } from '../game/diplomacy.js';
 import { provSecure, provW, SET_W } from '../game/standing.js';
 import { canAfford, dist, emptyComp, GS, MAP, menOf, ownerName, provAt, starsOf } from '../game/state.js';
@@ -8,7 +10,6 @@ import {
   BASE_SPEED, FACTIONS, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET,
   OATH_TIME, PACT_TIME, PEACE_TIME, perkOf, PLAYER, PLUNDER, RES, sigOf, TYPES5, U, unitCost, UNITS, wallCost,
 } from '../game/data.js';
-import { mergeArmies, orderTarget, splitArmy } from '../game/armies.js';
 import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideMen } from '../game/battles.js';
 import { armyPay, buildImp, cityYield, fortify, landShare, marketOf, plunderer, recruit, trade } from '../game/economy.js';
 import { costHtml, costMini, fcss, fmt, fmtInt, IC, icOf } from './format.js';
@@ -105,7 +106,8 @@ export function cityPanel(c) {
   const besieged = c.battle && !c.battle.done;
   let sub = `${c.major ? 'Major city' : 'Town'} of ${P.name} · ${ownerName(c.owner)}${c.capital ? ' · capital' : ''}`;
   let h = headerHtml(fcss(c.owner), (c.capital ? '★ ' : '') + c.name, sub) + '<div class="pb">';
-  h += `<div class="kv"><span class="chip">${IC.men}militia <b>${fmtInt(c.militia)}</b>/${fmtInt(c.militiaMax)}</span><span class="chip">${IC.walls}walls <b style="letter-spacing:-1px">${wallsDots(c.walls)}</b></span>${besieged ? '<span class="chip" style="background:#8a2018">Under attack</span>' : ''}</div>`;
+  const known = seesCity(c);
+  h += `<div class="kv"><span class="chip">${IC.men}militia <b>${known ? fmtInt(c.militia) : '?'}</b>/${known ? fmtInt(c.militiaMax) : '?'}</span><span class="chip">${IC.walls}walls <b style="letter-spacing:-1px">${wallsDots(c.walls)}</b></span>${besieged && known ? '<span class="chip" style="background:#8a2018">Under attack</span>' : ''}</div>`;
   const k = 0.8 * c.loyal, sc = (y) => Object.fromEntries(RES.map((r) => [r, y[r] * k]));
   if (c.loyal < 0.99) h += `<div class="note">Recently conquered: the people are restless, income at <b>${Math.round(c.loyal * 100)}%</b> (recovers over time).</div>`;
   h += `<div class="sect">City income</div><div class="kv">${yieldChips(sc(cityYield(c, c.owner)))}</div>`;
@@ -154,7 +156,8 @@ export function cityPanel(c) {
     if (c.major) h += `<div class="note"><b>${c.name}</b> is the capital of ${P.name}: whoever holds it colours the province. The land's income is split between all its settlements.</div>`;
   } else {
     const arms = myOrderables();
-    if (arms.length) {
+    if (!known) h += `<div class="note">Out of sight: its militia and garrison are unknown. March closer, or send cavalry to scout.</div>`;
+    else if (arms.length) {
       const o = estimateOdds(arms, { kind: 'city', ref: c });
       h += oddsHtml(o, 'If your selected army attacks');
     } else h += `<div class="note">Select one of your armies, then ${isTouch ? 'tap' : 'right-click'} this city to see your odds and attack it.</div>`;
@@ -194,6 +197,7 @@ export function myArmyPanel(list) {
   h += compHtml(comp, ME);
   const pay = list.reduce((s, a) => s + armyPay(a), 0);
   h += `<div class="kv"><span class="chip">${IC.food}eats <b>${(upk * (home || forage ? 1 : 1.35)).toFixed(1)}</b>/s${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${pay.toFixed(1)}</b>/s</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
+  if (list.length === 1) { const g = groundInfo(a0.x, a0.y); h += `<div class="kv"><span class="chip">${g.name} · <b>${g.pace}</b></span></div>`; }
   const allDef = list.every((a) => a.stance === 'def'), allAgg = list.every((a) => a.stance === 'aggr');
   h += `<div class="sect">Stance</div><div class="seg"><button class="${allAgg ? 'on' : ''}" data-act="stance:aggr">⚔ Aggressive</button><button class="${allDef ? 'on' : ''}" data-act="stance:def">🛡 Testudo</button></div>`;
   h += `<div class="note">${allDef ? 'Testudo: <b>+22% defense</b>, legionaries take far less from arrows, slower march.' : 'Aggressive: <b>+12% attack</b>, weaker defense.'}</div>`;
@@ -263,7 +267,8 @@ export function renderPanel(force) {
   if (UI.hold && !force) return;
   let h = '';
   UI.sel = UI.sel.filter((a) => !a.dead);
-  if (UI.selEnemy && UI.selEnemy.dead) UI.selEnemy = null;
+  if (UI.selEnemy && (UI.selEnemy.dead || !seesArmy(UI.selEnemy))) UI.selEnemy = null;
+  if (UI.selBattle && !UI.selBattle.done && !seesBattle(UI.selBattle)) UI.selBattle = null;
   if (UI.selFort && UI.selFort.dead) UI.selFort = null;
   if (UI.sel.length) h = myArmyPanel(UI.sel);
   else if (UI.selDip != null && !GS.auto) h = dipPanel(UI.selDip);

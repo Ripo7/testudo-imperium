@@ -72,6 +72,7 @@ export function economy(dt) {
     let attr = (F.starving ? 0.006 : 0) + (F.unpaid ? 0.005 : 0);
     const b = MAP.biome[cellOf(a.x, a.y)];
     if (!home && (b === BIOME.SNOW || (b === BIOME.DESERT && !perkOf(a.owner).desertMarch))) attr += 0.004;
+    else if (!home && b === BIOME.MOUNTAIN) attr += 0.002;   // cold, falls and lost stragglers in the mountains
     if (attr > 0 && a.state !== 'battle') for (const t of ['spear', 'leg', 'arch', 'cav']) a.comp[t] = Math.max(0, a.comp[t] * (1 - attr * dt));
     if (menOf(a.comp) < 5 && a.comp.siege < 1 && a.state !== 'battle') a.dead = true;
   }
@@ -112,7 +113,7 @@ export function spawnRecruits(c, type) {
   let a = GS.armies.find((x) => !x.dead && x.owner === c.owner && x.state === 'idle' && Math.hypot(x.x - c.x, x.y - c.y) < 2.4);
   if (!a) {
     let px = c.x + 1.4, py = c.y + 1.2;
-    if (!(MAP.cost[cellOf(px, py)] < Infinity)) { px = c.x; py = c.y; }
+    if (!(MAP.move[cellOf(px, py)] < Infinity)) { px = c.x; py = c.y; }
     a = makeArmy(c.owner, emptyComp(), px, py);
     a.stance = GS.factions[c.owner].isPlayer ? 'aggr' : 'def';
   }
@@ -147,7 +148,7 @@ export function fortSpotOk(f, x, y) {
   x = Math.round(x); y = Math.round(y);
   if (x < 1 || y < 1 || x >= MAP.W - 1 || y >= MAP.H - 1) return false;
   const i = y * MAP.W + x;
-  if (!(MAP.cost[i] < Infinity)) return false;
+  if (!(MAP.move[i] < Infinity)) return false;
   const b = MAP.biome[i];
   if (b === BIOME.MOUNTAIN || b === BIOME.SNOW || MAP.river[i]) return false;
   const p = MAP.prov[i];
