@@ -1,8 +1,8 @@
-import { SET_W } from './standing.js';
+import { holdsIn, placesOf, SET_W, STAND } from './standing.js';
 import { GS, MAP, menOf, ownerName, rnd } from './state.js';
 import { $ } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
-import { FACTIONS, GANG_AT, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PEACE_WILL, PLAYER, pName, REVOLT_RATE, TREATY_TIME, TRIBUTE_FLOOR } from './data.js';
+import { FACTIONS, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PEACE_WILL, PLAYER, pName, REVOLT_RATE, RIVALRY, TREATY_TIME, TRIBUTE_FLOOR } from './data.js';
 import { captureCity, powerOf, roundComp } from './battles.js';
 import { fcss } from '../ui/format.js';
 import { ME, UI } from '../ui/state.js';
@@ -22,6 +22,23 @@ export const atPeace = (f, g) => f >= 0 && g >= 0 && f !== g && !atWar(f, g);
 export const treatyOn = (f, g) => atPeace(f, g) && relOf(f, g).lock > GS.time;
 export function warsOf(f) { let n = 0; for (const G of GS.factions) if (G.alive && atWar(f, G.id)) n++; return n; }
 export function armyPower(f) { let p = 0; for (const a of GS.armies) if (!a.dead && a.owner === f) p += powerOf(a.comp, f); return p; }
+// with only two powers left the war is for the continent: the one ahead won't make peace, and war comes sooner
+// dispute: what a province shared with a neighbour is worth as a reason for war (by the share of it the power holds)
+// nearWin: within this many provinces of victory a power won't make peace with anyone behind it
+// claim: how much less ready for peace a power is for every province it means to finish that the other still holds part of;
+// claimWar: how much likelier it then declares war
+export const ENDGAME = { pressOn: 0.5, warRatio: 0.75, warChance: 3, dispute: 3, nearWin: 3, claim: 0.15, claimWar: 1 };
+// how many provinces f shares with g while holding most of their places (f's claims on g)
+export function claimsAgainst(f, g) {
+  let n = 0;
+  for (const P of MAP.provinces) {
+    if (P.owner !== -2 || !holdsIn(P, f) || !holdsIn(P, g)) continue;
+    const pl = placesOf(P);
+    if (pl.filter((x) => x.ref.owner === f).length * 2 > pl.length) n++;
+  }
+  return n;
+}
+export const lastTwo = () => GS.factions.filter((X) => X.alive).length === 2;
 export const mins = (sec) => (sec % 60 === 30 ? Math.floor(sec / 60) + '½' : String(Math.round(sec / 60)));
 export const fname = (f) => `<b style="color:${fcss(f)}">${ownerName(f)}</b>`;
 export function declareWar(f, g, quiet) {
@@ -66,7 +83,9 @@ export function peaceWill(f, g) {
   w += 0.15 * Math.max(0, warsOf(f) - 1);                                      // fighting on several fronts
   w += Math.max(-0.3, Math.min(0.3, ((R.sc[g] || 0) - (R.sc[f] || 0)) * 0.04));   // who is winning
   if (F.starving || F.unpaid) w += 0.2;
-  if (G.share > GANG_AT && F.share < G.share) w -= 0.25;   // nobody lightly makes peace with a runaway leader
+  if (G.vshare > RIVALRY.gangAt && F.vshare < G.vshare) w -= 0.25;   // nobody lightly makes peace with a runaway leader
+  if ((lastTwo() || F.provs >= STAND.need - ENDGAME.nearWin) && F.provs >= G.provs) w -= ENDGAME.pressOn;   // close to victory, or one of the last two and ahead: it fights it out
+  w -= ENDGAME.claim * claimsAgainst(f, g);                 // provinces it means to finish, that g still holds a part of
   if (GS.time - R.since < 150) w -= 0.5;                    // a war just begun is not given up
   if (R.lc && R.lc[f] > GS.time - 60) w -= 0.3;             // still taking cities: press on
   return w;
@@ -82,7 +101,7 @@ export function peaceAnswer(g) {
   const w = peaceWill(g, PLAYER);
   if (w > PEACE_WILL) return { ok: true, gold: 0, why: `${G.name} is ready for peace.` };
   if (w > TRIBUTE_FLOOR) return { ok: true, gold: tributeFor(w), why: `${G.name} will make peace for a tribute.` };
-  return { ok: false, why: GS.time - R.since < 150 ? `The war has only begun: ${G.name} wants to fight it out first.` : P.share > GANG_AT && G.share < P.share ? `${G.name} sees ${pName()} as the threat that must be stopped.` : `${G.name} thinks it is winning and refuses.` };
+  return { ok: false, why: GS.time - R.since < 150 ? `The war has only begun: ${G.name} wants to fight it out first.` : P.vshare > RIVALRY.gangAt && G.vshare < P.vshare ? `${G.name} sees ${pName()} as the threat that must be stopped.` : `${G.name} thinks it is winning and refuses.` };
 }
 export function suePeace(g) {
   const a = peaceAnswer(g), P = GS.factions[PLAYER];
@@ -97,7 +116,7 @@ export function treatyAnswer(g) {
   const P = GS.factions[PLAYER], G = GS.factions[g], R = relOf(PLAYER, g);
   if ((R.nd[g] || 0) > GS.time) return { ok: false, why: `${G.name} will not receive your envoys again so soon.` };
   if (P.oath > GS.time) return { ok: false, why: `${G.name} does not trust an oath-breaker.` };
-  if (P.share > GANG_AT && G.share < P.share) return { ok: false, why: `${G.name} sees ${pName()} as the threat that must be stopped.` };
+  if (P.vshare > RIVALRY.gangAt && G.vshare < P.vshare) return { ok: false, why: `${G.name} sees ${pName()} as the threat that must be stopped.` };
   const r = (armyPower(g) + 50) / (armyPower(PLAYER) + 50);
   if (warsOf(g) === 0 && r > 1.9 - 0.6 * G.aggr) return { ok: false, why: `${G.name} has its eye on your lands and refuses.` };
   return { ok: true, why: `${G.name} agrees.` };
@@ -120,17 +139,19 @@ export function aiConsiderWar(F) {
   let best = null, bs = 0;
   for (const G of GS.factions) {
     if (!G.alive || G.id === F.id || atWar(F.id, G.id) || relOf(F.id, G.id).lock > GS.time) continue;   // the AI keeps its treaties
-    const vsLeader = G.share > GANG_AT && F.share < G.share;
+    const vsLeader = G.vshare > RIVALRY.gangAt && F.vshare < G.vshare;
     if (wars >= maxW + (vsLeader ? 1 : 0)) continue;
     const r = (myPow + 50) / (armyPower(G.id) + 50);
-    if (r < (vsLeader ? 0.65 : 0.95)) continue;
+    if (r < (vsLeader ? 0.65 : lastTwo() ? ENDGAME.warRatio : 0.95)) continue;
     let val = 0;
     for (const c of MAP.cities) if (c.owner === G.id) { const d = Math.min(...mine.map((m) => Math.hypot(m.x - c.x, m.y - c.y))); if (d < 32) val += SET_W(c) / (1 + d / 12); }
+    // provinces it shares with G: G stands between it and owning them
+    for (const P of MAP.provinces) if (holdsIn(P, F.id) && holdsIn(P, G.id)) { const pl = placesOf(P); val += ENDGAME.dispute * pl.filter((x) => x.ref.owner === F.id).length / pl.length; }
     if (val <= 0) continue;
     const sc = val * Math.min(r, 2) * (vsLeader ? 1.8 : 1) * (G.isPlayer ? 1 + 0.2 * F.aggr : 1);
     if (sc > bs) { bs = sc; best = G; }
   }
-  if (best && rnd() < (0.12 + 0.3 * F.aggr) * (roomToGrow ? 0.35 : 1) * (wars ? 0.5 : 1)) declareWar(F.id, best.id);
+  if (best && rnd() < (0.12 + 0.3 * F.aggr) * (lastTwo() ? ENDGAME.warChance : roomToGrow ? 0.35 : 1) * (wars ? 0.5 : 1) * (1 + ENDGAME.claimWar * claimsAgainst(F.id, best.id))) declareWar(F.id, best.id);
 }
 export function dipTick() {
   // every war wears both sides down: time, hunger and other fronts

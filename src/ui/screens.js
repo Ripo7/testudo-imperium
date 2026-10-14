@@ -73,7 +73,7 @@ export function startCampaign(auto) {
   if (auto) {
     CAM.tx = 0; CAM.tz = 6; CAM.td = 150;
     DIR.tgt = { kind: 'spot', x: (MAP.W - 1) / 2, y: (MAP.H - 1) / 2 + 6, d: 150 }; DIR.hold = 7;
-    setTimeout(() => log(`<b>Autoplay.</b> The AI commands all four powers. The first to hold half of the victory points wins.${GS.fog ? ' You watch through the eyes of the power picked in the standings.' : ''}`, 'info'), 600);
+    setTimeout(() => log(`<b>Autoplay.</b> The AI commands all four powers. The first to hold 60% of the provinces wins.${GS.fog ? ' You watch through the eyes of the power picked in the standings.' : ''}`, 'info'), 600);
     setTimeout(() => log(isTouch ? 'Tap a power in the standings to follow it. Drag to take the camera.' : 'Click a power in the standings to follow it · drag to take the camera, press F to give it back.', 'info'), 1700);
   } else {
     focusOn(cap0); CAM.td = 48;
@@ -118,7 +118,7 @@ export function showOver() {
     const W = GS.factions[GS.winner];
     t.textContent = `${W.name} wins`;
     t.className = 'res-title'; t.style.color = W.css;
-    $('resTag').textContent = `After ${tstr} of war, ${W.name} holds ${MAP.provinces.filter((p) => p.owner === W.id).length} of ${N} provinces and ${W.pts} of ${STAND.total} victory points.${fellTxt}`;
+    $('resTag').textContent = `After ${tstr} of war, ${W.name} holds ${MAP.provinces.filter((p) => p.owner === W.id).length} of the ${N} provinces (${STAND.need} were needed).${fellTxt}`;
   } else {
     const win = GS.over === 'win';
     t.style.color = '';

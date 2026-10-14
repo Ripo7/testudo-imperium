@@ -3,7 +3,6 @@ import { atPeace, atWar, declareWar, relOf } from './diplomacy.js';
 import { SET_W } from './standing.js';
 import { angDiff, cellOf, cloneComp, dist, emptyComp, GS, MAP, menOf, rnd, rndIn, starsOf } from './state.js';
 import { BIOME, BIOME_NAME, rng32 } from '../map/generate.js';
-import { updateTerrainColors } from '../render/terrain.js';
 import { refreshCityMesh, removeFortMesh } from '../render/cities.js';
 import { BALN, FORT_WALLS, K_DMG, NEUTRAL, ROUND_T, sigOf, TERRAIN_DEF, TW_CAV, TW_DEF, TYPES5, UNITS, VS } from './data.js';
 import { militiaMaxOf } from './campaign.js';
@@ -289,7 +288,6 @@ export function captureCity(c, f) {
   c.owner = f; c.walls = Math.max(0, c.walls - 1); c.wallBuild = null; c.queue = [];
   c.impBuild = null; if (c.imps.length) c.imps.pop();   // the last building is looted
   c.militiaMax = militiaMaxOf(c); c.militia = c.militiaMax * 0.35; c.loyal = 0.3;
-  if (c.major) { MAP.provinces[c.prov].owner = f; updateTerrainColors(); }
   refreshCityMesh(c);
   onCityCaptured(c, prev, f);
 }

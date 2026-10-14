@@ -1,13 +1,13 @@
 import { pairKey } from '../game/diplomacy.js';
 import { cityOf } from '../game/chronicle.js';
-import { needAt, STAND } from '../game/standing.js';
+import { STAND } from '../game/standing.js';
 import { GS, MAP } from '../game/state.js';
 import { FACTIONS, PLAYER } from '../game/data.js';
 import { clock, FCHART, fmt, fmtInt, GLYPH } from './format.js';
 import { deadOf, eventInfo, eventRow } from './overview.js';
 
 /* =========================================================
-   The end-of-war report: how it ended, how it went (points and men over time),
+   The end-of-war report: how it ended, how it went (provinces and men over time),
    every power's numbers, its economy (income over time, what it earned and spent),
    each war, and the moments that decided it.
    Charts: one line per power in its chart colour (FCHART), a legend and direct labels,
@@ -16,6 +16,7 @@ import { deadOf, eventInfo, eventRow } from './overview.js';
 export const REP = { charts: {}, table: {}, all: false, data: null };
 const N = () => GS.factions.length;
 const provinces = (f) => MAP.provinces.filter((p) => p.owner === f).length;
+const citiesOf = (f) => MAP.cities.filter((c) => c.owner === f).length;
 const sw = (f) => `<i class="sw" style="background:${FACTIONS[f].css}"></i>`;
 
 // every war, rebuilt from the chronicle: who declared it on whom, how long it lasted, how it ended, what it cost
@@ -46,8 +47,8 @@ export function reportData() {
     if (!F.alive && xs.length) { xs.push(Math.round(F.eliminatedAt)); ys.push(0); }   // wiped out: no city, no army left
     return { f: i, name: F.name, color: FCHART[i], xs, ys, fell: !F.alive, fellAt: F.eliminatedAt };
   });
-  const rank = GS.factions.slice().sort((a, b) => (b.id === winner) - (a.id === winner) || (b.alive - a.alive) || (a.alive ? b.pts - a.pts : b.eliminatedAt - a.eliminatedAt));
-  return { T, winner, rank, pts: series(1), men: series(1 + n), inc: series(1 + 2 * n), wars: warsFromChron() };
+  const rank = GS.factions.slice().sort((a, b) => (b.id === winner) - (a.id === winner) || (b.alive - a.alive) || (a.alive ? b.provs - a.provs || b.pts - a.pts : b.eliminatedAt - a.eliminatedAt));
+  return { T, winner, rank, prov: series(1 + 3 * n), men: series(1 + n), inc: series(1 + 2 * n), wars: warsFromChron() };
 }
 
 /* ---------- sections ---------- */
@@ -55,7 +56,7 @@ export function finalHtml(R) {
   return '<ol class="rep-final">' + R.rank.map((F, i) => {
     const fate = F.id === R.winner ? 'Wins the war' : !F.alive ? `Wiped out at ${clock(F.eliminatedAt)}` : `${i + 1}${['st', 'nd', 'rd', 'th'][Math.min(i, 3)]} place`;
     const you = !GS.auto && F.id === PLAYER;
-    return `<li class="${F.id === R.winner ? 'win' : ''}${F.alive ? '' : ' dead'}" style="--fc:${F.css}"><i></i><div><b>${F.name}${you ? ' <small>(you)</small>' : ''}</b><span>${fate}</span></div><em><b>${F.pts}</b> points<br>${provinces(F.id)} provinces</em></li>`;
+    return `<li class="${F.id === R.winner ? 'win' : ''}${F.alive ? '' : ' dead'}" style="--fc:${F.css}"><i></i><div><b>${F.name}${you ? ' <small>(you)</small>' : ''}</b><span>${fate}</span></div><em><b>${provinces(F.id)}</b> provinces<br>${citiesOf(F.id)} cities and towns</em></li>`;
   }).join('') + '</ol>';
 }
 const niceStep = (max, n) => { const raw = max / n, p = 10 ** Math.floor(Math.log10(raw)), k = raw / p; return (k <= 1 ? 1 : k <= 2 ? 2 : k <= 5 ? 5 : 10) * p; };
@@ -124,7 +125,7 @@ export function chartBlock(id, title, sub, W, H, S, opt) {
 export function ledgerHtml(R) {
   const S = GS.fstats, best = (vals) => Math.max(...vals);
   const rows = [
-    ['Victory points', (f) => GS.factions[f].pts, 1], ['Provinces held', provinces, 1], ['Largest army', (f) => S[f].peak, 1], ['Men raised', (f) => S[f].raised, 0],
+    ['Provinces held', provinces, 1], ['Cities and towns held', citiesOf, 1], ['Largest army', (f) => S[f].peak, 1], ['Men raised', (f) => S[f].raised, 0],
     ['Battles won', (f) => S[f].won, 1], ['Battles lost', (f) => S[f].lost, 0], ['Enemies killed', (f) => S[f].kills, 1], ['Men lost', (f) => S[f].dead, 0],
     ['Cities taken', (f) => S[f].captured, 1], ['Cities lost', (f) => S[f].lostC, 0], ['Revolts', (f) => S[f].revolts, 0],
     ['Wars declared', (f) => S[f].wars, 0], ['Peace treaties', (f) => S[f].peaces, 0], ['Walls and buildings raised', (f) => S[f].works, 0],
@@ -206,7 +207,7 @@ export function warsHtml(R) {
     const took = [w.f, w.g].filter((f) => w.took[f]).map((f) => `${FACTIONS[f].name} took ${w.took[f]} cit${w.took[f] > 1 ? 'ies' : 'y'}`);
     const cost = w.battles ? `${w.battles} battle${w.battles > 1 ? 's' : ''}, ${fmtInt(w.dead[w.f])} ${F.adj} and ${fmtInt(w.dead[w.g])} ${G.adj} dead.` : 'No battle was fought.';
     h += `<div class="gw"><div class="gl">${sw(w.f)}<b>${F.name}</b> on ${sw(w.g)}<b>${G.name}</b><em>${clock(w.start)} to ${w.end == null ? 'the end' : clock(w.end)}</em></div>`
-      + `<div class="gt"><i style="left:${pct(w.start)};width:max(3px, ${pct(end - w.start)})"><b style="background:${FCHART[w.f]}"></b><b style="background:${FCHART[w.g]}"></b></i>${w.how === 'peace' ? `<span class="ge peace" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.dove}</span>` : w.how === 'fall' ? `<span class="ge fall" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.skull}</span>` : ''}</div>`
+      + `<div class="gt"><i style="left:min(${pct(w.start)}, calc(100% - 3px));width:max(3px, ${pct(end - w.start)})"><b style="background:${FCHART[w.f]}"></b><b style="background:${FCHART[w.g]}"></b></i>${w.how === 'peace' ? `<span class="ge peace" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.dove}</span>` : w.how === 'fall' ? `<span class="ge fall" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.skull}</span>` : ''}</div>`
       + `<p>${w.broke ? `${F.name} broke a treaty to start it. ` : ''}${how} ${took.length ? took.join(', ') + '. ' : ''}${cost}</p></div>`;
   }
   return h + `<div class="gw scale"><div></div><div class="gs"><span>0:00</span><span>${clock(T)}</span></div></div></div></section>`;
@@ -229,8 +230,10 @@ export function renderReport() {
   const marks = GS.chron.filter((e) => e.k === 'war' || e.k === 'peace' || e.k === 'fall');
   let h = finalHtml(R);
   if (GS.hist.length > 1) {
-    const maxPts = Math.max(needAt(0), ...R.pts.flatMap((L) => L.ys));
-    h += chartBlock('pts', 'Victory points', `Every power's points through the war, against the ${STAND.need} needed to win (the mark eases after 25 minutes). Hover or touch the chart for the numbers at any moment.`, W, phone ? 220 : 260, R.pts, { T: R.T, max: maxPts, ref: needAt, fmtY: (v) => String(Math.round(v)), label: 'Victory points of each power over time', marks });
+    if (R.prov.some((L) => L.xs.length > 1)) {
+      const maxProv = Math.max(STAND.need, ...R.prov.flatMap((L) => L.ys));
+      h += chartBlock('pts', 'Provinces held', `The provinces every power held whole through the war, against the ${STAND.need} of ${STAND.provinces} needed to win. Hover or touch the chart for the numbers at any moment.`, W, phone ? 220 : 260, R.prov, { T: R.T, max: maxProv, ref: () => STAND.need, fmtY: (v) => String(Math.round(v)), label: 'Provinces held by each power over time', marks });
+    }
     const maxMen = Math.max(500, ...R.men.flatMap((L) => L.ys));
     h += chartBlock('men', 'Men under arms', 'The size of every army in the field, added up.', W, phone ? 160 : 190, R.men, { T: R.T, max: maxMen, fmtY: fmt, label: 'Men under arms of each power over time' });
   } else h += '<p class="rep-sub">This war was resumed from an older save, so there is no record of how it went before.</p>';
@@ -261,7 +264,7 @@ export function chartHover(id, svg, clientX) {
   const evs = C.marks ? GS.chron.filter((e) => (e.k === 'war' || e.k === 'peace' || e.k === 'fall') && e.t > prev && e.t <= tk + 0.5).slice(0, 3) : [];
   const tt = svg.parentNode.querySelector('.ctip');
   tt.innerHTML = `<b>${clock(tk)}</b>` + vals.map(([L, v]) => `<div><i style="background:${L.color}"></i>${L.name}<em>${C.fmtY(v)}</em></div>`).join('')
-    + (id === 'pts' ? `<div class="need">Needed to win<em>${needAt(tk)}</em></div>` : '') + evs.map((e) => `<p>${eventInfo(e).html}</p>`).join('');
+    + (id === 'pts' ? `<div class="need">Needed to win<em>${STAND.need}</em></div>` : '') + evs.map((e) => `<p>${eventInfo(e).html}</p>`).join('');
   tt.classList.remove('hidden');
   const px = (x / (svg.viewBox.baseVal.width)) * r.width, w = tt.offsetWidth;
   tt.style.left = (px + 14 + w > r.width ? px - 14 - w : px + 14) + 'px';

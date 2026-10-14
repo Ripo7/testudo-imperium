@@ -67,7 +67,7 @@
         </div>
       </div>
       <div class="rules tablet">
-        <div><h3>Provinces</h3><p>A province's land income is shared by its settlements: the major city the most. Hold them all for a bonus.</p></div>
+        <div><h3>Provinces</h3><p>A province is yours only when you hold every city, town and fort in it. Hold 60% of them to win.</p></div>
         <div><h3>Resources</h3><p>Farmland feeds, forests give wood, hills give stone, cities give gold, every second. Armies eat food.</p></div>
         <div><h3>Armies</h3><p>Spears stop horse, horse rides down archers, siege engines break walls. Each power also fields its own elite unit.</p></div>
         <div><h3>Battles</h3><p>Fought automatically but decided by you: terrain, rivers, walls, flanks, stance and the odds you accept.</p></div>
@@ -93,15 +93,17 @@
     <div class="pnl tablet">
       <h2>How to rule</h2>
       <h4>Goal</h4>
-      <p>Hold <b>half of all victory points</b> (a major city is worth 3, a town 1), or wipe out the three other powers. If you lose every major city, or a rival gets there first, you fall. After 25 minutes of war the bar eases, down to 40% at 35 minutes, so a clear leader can end a long stalemate.</p>
-      <p>Growth has a brake: past 30% of the points an empire is <b>overstretched</b> (income falls about 0.8% for every point above 30%, and conquered cities settle more slowly), and the other powers turn on whoever passes about 36%.</p>
+      <p>Hold <b>60% of the provinces</b>, or wipe out the three other powers. If you lose every major city, or a rival gets there first, you fall.</p>
+      <p>A province is yours only while you hold <b>every place in it</b>: its major city, all its towns, and any <b>fort</b> finished inside it. Split between holders, it is <b>disputed</b> (hatched on the map, each part in its holder's colour): it counts for nobody. So an enemy fort, or one town still free, keeps a province from you.</p>
+      <p>Growth has a brake: past its fair share of the continent's settlements (a major city counts three times; 30% while four powers stand, more as powers fall) an empire is <b>overstretched</b> (income falls about 0.8% for every point above it, and conquered cities settle more slowly), and the other powers turn on whoever holds half of the provinces.</p>
+      <p>Wars are fought for provinces: a power goes to war more readily against a rival that holds part of a province it means to finish, and makes peace less readily with it. A power close to victory won't make peace with anyone behind it, nor will the one ahead when only two powers are left.</p>
       <h4>Keeping track</h4>
       <ul>
         <li><b>Dispatches</b> (top left) list what needs your attention right now: a city under assault, an enemy army closing on one of your cities, a plundered province, food or gold about to run out, a city that may revolt, a rival close to victory, a treaty about to end. Each one lasts as long as its cause. Click it to go there.</li>
-        <li>The <b>standings</b> show each power's victory points with their change over the last minute (▲▼), a bar towards victory and its men under arms. Below them, every war and treaty, with how long it has lasted or has left.</li>
+        <li>The <b>standings</b> show the provinces each power holds whole, with their change over the last minute (▲▼), a bar towards victory and its men under arms. Below them, every war and treaty, with how long it has lasted or has left.</li>
         <li><b>Overview</b> (O): your treasury and every army and city at a glance (Empire), who fights whom with war scores and weariness (Wars), and the <b>chronicle</b> of the war: wars, treaties, battles, cities taken, revolts. Under the fog it only tells what your scouts saw, and what everyone knows.</li>
         <li>The <b>eye</b> in the top bar (V) hides the standings, dispatches, messages and hints at once, to clear the map. While they are hidden, a red number on the eye counts the urgent dispatches. The pause menu can switch each of them off for good.</li>
-        <li>When the war ends, a <b>report</b> tells how it went: victory points, armies and income over time, every power's numbers, its economy (what it earned, and spent on pay, food, recruits and buildings), each war and its outcome, and the key moments.</li>
+        <li>When the war ends, a <b>report</b> tells how it went: provinces, armies and income over time, every power's numbers, its economy (what it earned, and spent on pay, food, recruits and buildings), each war and its outcome, and the key moments.</li>
         <li class="touch-only">On a phone the panel opens over the bottom third of the screen: pull its handle up to see all of it, down to close it.</li>
       </ul>
       <h4>Marching</h4>
@@ -134,7 +136,7 @@
       <ul>
         <li>Select one of your cities to <b>recruit</b> troops (they muster beside the city) or <b>raise walls</b> (up to level 3). Walls multiply the militia's defense.</li>
         <li><b>Improvements</b> (a major city has two slots, a town one): <b>Farmlands</b> +0.9 food/s · <b>Forum</b> +0.8 gold/s · <b>Barracks</b> recruit 30% faster and +70 militia · <b>Temple</b> loyalty returns 3× faster and half the overstretch penalty. An enemy who takes the city loots the last one.</li>
-        <li><b>Forts</b> are built inside your provinces: they block the road (enemies at war must storm them) and <b>guard the countryside</b>: enemy armies within 6 squares of a fort cannot plunder.</li>
+        <li><b>Forts</b> are built in a province where you hold at least one place. Once finished, a fort is one more place to hold: an enemy must storm it to win the province, and a fort of yours in a rival's province keeps it disputed. Forts also block the road (enemies at war must storm them) and <b>guard the countryside</b>: enemy armies within 6 squares of a fort cannot plunder.</li>
       </ul>
       <h4>Battles: automatic, but decided by strategy</h4>
       <ul>
@@ -153,7 +155,7 @@
       <h4>Saving</h4>
       <p>Your campaign is saved in this browser whenever you leave the page, open the menu or return to the title screen, and every few seconds while you play. Press <b>Continue</b> on the title screen to pick it up where you left off. A finished campaign is not kept.</p>
       <h4>Reading the map</h4>
-      <p>Each power's land is tinted in its colour, with a stronger glow along its borders; unclaimed land is greyed out. Zoom out and the colours get stronger, or switch to the <b>Political</b> map (P) for flat colours.</p>
+      <p>Each power's land is tinted in its colour, with a stronger glow along its borders; free land is greyed out. A disputed province is hatched, each part tinted for whoever holds the nearest place, and its name is underlined with dashes. Zoom out and the colours get stronger, or switch to the <b>Political</b> map (P) for flat colours.</p>
       <h4>Controls</h4>
       <p class="desk-only">Left-click select (Shift adds armies) · Right-click: march / attack / merge / station · Drag to pan · Wheel zoom · WASD pan · Space pause · 1–4 speed · P political map · O overview · V map view (hide the panels) · F follow camera (autoplay) · H back home · Esc cancel</p>
       <p class="touch-only">Tap to select · With an army selected, tap the map to march or a target for options · Drag to pan · Pinch to zoom</p>

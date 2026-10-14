@@ -8,6 +8,7 @@ import { CAM } from './camera.js';
 import { buildSeaTexture } from './water.js';
 import { FACTIONS } from '../game/data.js';
 import { UI } from '../ui/state.js';
+import { DISPUTED, placesOf } from '../game/standing.js';
 
 /* =========================================================
    Painted terrain: fine relief, hand-painted albedo, brush detail,
@@ -283,14 +284,14 @@ export const TERRAIN_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, 
 TERRAIN_MAT.map.needsUpdate = true;
 TERRAIN_MAT.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, TERR_U);
-  sh.vertexShader = 'attribute vec3 aOwn;\nattribute vec3 aOwnK;\nvarying vec3 vOwn;\nvarying vec3 vOwnK;\nvarying vec3 vWP;\nvarying vec3 vWN;\n' +
+  sh.vertexShader = 'attribute vec3 aOwn;\nattribute vec4 aOwnK;\nvarying vec3 vOwn;\nvarying vec4 vOwnK;\nvarying vec3 vWP;\nvarying vec3 vWN;\n' +
     sh.vertexShader
       .replace('#include <color_vertex>', '#include <color_vertex>\nvOwn = aOwn; vOwnK = aOwnK;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWN = normalize(mat3(modelMatrix) * objectNormal);');
   sh.fragmentShader = [
     'uniform float uTint;', 'uniform float uEdge;', 'uniform float uNeu;', 'uniform float uLum;',
     'uniform sampler2D uDet;', 'uniform float uSnowY;', 'uniform float uDetK;', 'uniform vec3 uRockA;', 'uniform vec3 uRockB;', 'uniform vec3 uSnowC;',
-    'varying vec3 vOwn;', 'varying vec3 vOwnK;', 'varying vec3 vWP;', 'varying vec3 vWN;', '',
+    'varying vec3 vOwn;', 'varying vec4 vOwnK;', 'varying vec3 vWP;', 'varying vec3 vWN;', '',
   ].join('\n') + sh.fragmentShader
     .replace('#include <map_fragment>', [
       '#include <map_fragment>',
@@ -320,19 +321,21 @@ TERRAIN_MAT.onBeforeCompile = (sh) => {
       '  const vec3 LW = vec3(0.299, 0.587, 0.114);',
       '  vec3 o = gl_FragColor.rgb;',
       '  float L = dot(o, LW);',
-      '  o = mix(o, vec3(L), vOwnK.z * uNeu);',
+      // disputed provinces: each holder's zone in its colour, crossed by soft diagonal bands of plain ground
+      '  float hatch = vOwnK.w * smoothstep(0.25, 0.75, 0.5 + 0.5 * sin((vWP.x + vWP.z) * 2.2));',
+      '  o = mix(o, vec3(L), vOwnK.z * uNeu * (1.0 - 0.7 * hatch));',
       '  float lc = dot(vOwn, LW);',
       '  float Lt = mix(L, lc, uLum);',
       '  vec3 cb = vOwn + (Lt - lc);',
       '  float n = min(min(cb.r, cb.g), cb.b), x = max(max(cb.r, cb.g), cb.b);',
       '  if (n < 0.0) cb = Lt + (cb - Lt) * Lt / max(Lt - n, 1e-4);',
       '  if (x > 1.0) cb = Lt + (cb - Lt) * (1.0 - Lt) / max(x - Lt, 1e-4);',
-      '  float k = clamp(vOwnK.x * uTint + vOwnK.y * uEdge, 0.0, 0.95);',
+      '  float k = clamp(vOwnK.x * uTint + vOwnK.y * uEdge, 0.0, 0.95) * (1.0 - 0.7 * hatch);',
       '  gl_FragColor.rgb = mix(o, cb, k);',
       '}',
     ].join('\n'));
 };
-TERRAIN_MAT.customProgramCacheKey = () => 'terrain-paint1';
+TERRAIN_MAT.customProgramCacheKey = () => 'terrain-paint2';
 export const VIEW = { political: false };
 export function updateTerritoryLook() {
   const s = smooth(28, 138, CAM.d);
@@ -376,10 +379,10 @@ export function buildTerrain() {
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeVertexNormals();
   terrainColors = new Float32Array(NV * 3);
-  ownCol = new Float32Array(NV * 3); ownK = new Float32Array(NV * 3);
+  ownCol = new Float32Array(NV * 3); ownK = new Float32Array(NV * 4);   // ownK: owned tint, border glow, free land, disputed
   g.setAttribute('color', new THREE.BufferAttribute(terrainColors, 3));
   g.setAttribute('aOwn', new THREE.BufferAttribute(ownCol, 3));
-  g.setAttribute('aOwnK', new THREE.BufferAttribute(ownK, 3));
+  g.setAttribute('aOwnK', new THREE.BufferAttribute(ownK, 4));
   g.computeBoundingSphere();
   // valleys a little darker, crests a little lighter (cheap ambient occlusion)
   const blur = (src, r) => {
@@ -413,7 +416,7 @@ export function updateTerrainColors() {
     terrainColors[v * 3] = terrainColors[v * 3 + 1] = terrainColors[v * 3 + 2] = s;
   }
   terrain.geometry.attributes.color.needsUpdate = true;
-  const sig = MAP.provinces.map((P) => P.owner).join(',');
+  const sig = MAP.provinces.map((P) => (P.owner === DISPUTED ? 'd' + P.sig : P.owner)).join('|');
   if (sig !== ownSig) { ownSig = sig; updateOwnership(); }
   refreshBorders(sig);
 }
@@ -422,8 +425,18 @@ export let OWN_SRGB = null;
 export function updateOwnership() {
   if (!OWN_SRGB) OWN_SRGB = FACTIONS.map((F) => hexRGB(F.css));
   const NV = FW * FH;
-  const own = new Int8Array(NV).fill(-2);
-  for (let v = 0; v < NV; v++) if (fineProv[v] >= 0 && HF[v] > -0.02) own[v] = provOwner(fineProv[v]);
+  const own = new Int8Array(NV).fill(-2), disp = new Uint8Array(NV);
+  const zones = MAP.provinces.map((P) => (P.owner === DISPUTED ? placesOf(P).map((x) => [x.ref.x * RS, x.ref.y * RS, x.ref.owner]) : null));
+  for (let v = 0; v < NV; v++) {
+    const p = fineProv[v];
+    if (p < 0 || HF[v] <= -0.02) continue;
+    const Z = zones[p];
+    if (!Z) { own[v] = provOwner(p); continue; }
+    const i = v % FW, j = (v / FW) | 0;
+    let bd = Infinity;
+    for (const [x, y, o] of Z) { const d = (x - i) * (x - i) + (y - j) * (y - j); if (d < bd) { bd = d; own[v] = o; } }
+    disp[v] = 1;
+  }
   const dist = new Float32Array(NV).fill(99);
   const q = [];
   for (let v = 0; v < NV; v++) {
@@ -457,10 +470,10 @@ export function updateOwnership() {
       const fc = OWN_SRGB[o];
       ownCol[v * 3] = fc[0]; ownCol[v * 3 + 1] = fc[1]; ownCol[v * 3 + 2] = fc[2];
       const e = Math.max(0, 1 - dist[v] / RS / 3.2);
-      ownK[v * 3] = 1; ownK[v * 3 + 1] = e * e; ownK[v * 3 + 2] = 0;
+      ownK[v * 4] = 1; ownK[v * 4 + 1] = e * e; ownK[v * 4 + 2] = 0; ownK[v * 4 + 3] = disp[v];
     } else {
       ownCol[v * 3] = ownCol[v * 3 + 1] = ownCol[v * 3 + 2] = 0;
-      ownK[v * 3] = 0; ownK[v * 3 + 1] = 0; ownK[v * 3 + 2] = o === -1 ? 1 : 0;
+      ownK[v * 4] = 0; ownK[v * 4 + 1] = 0; ownK[v * 4 + 2] = o === -1 ? 1 : 0; ownK[v * 4 + 3] = disp[v];
     }
   }
   terrain.geometry.attributes.aOwn.needsUpdate = true;

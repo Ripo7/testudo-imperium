@@ -1,6 +1,6 @@
 import { atWar, fname, relOf, wearyWord } from '../game/diplomacy.js';
 import { cityOf, sawIt } from '../game/chronicle.js';
-import { STAND } from '../game/standing.js';
+import { DISPUTED, holdsIn, STAND } from '../game/standing.js';
 import { GS, MAP, menOf, starsOf } from '../game/state.js';
 import { FACTIONS, IMPS, PEACE_TIME, RES } from '../game/data.js';
 import { clock, fmtInt, fmtRate, GLYPH, IC, icOf } from './format.js';
@@ -25,6 +25,12 @@ export function eventInfo(e) {
     case 'war': return { cat: 'war', ico: 'swords', html: `${fname(e.f)} ${e.b ? 'breaks its treaty and declares' : 'declares'} war on ${fname(e.g)}.` };
     case 'peace': return { cat: 'war', ico: 'dove', html: `${fname(e.f)} and ${fname(e.g)} make peace${e.n ? `; ${fname(e.p)} pays ${fmtInt(e.n)} gold` : ''}.` };
     case 'fall': return { cat: 'war', ico: 'skull', html: `${fname(e.f)} is wiped from the map.` };
+    case 'prov': {
+      const P = MAP.provinces[e.p], go = `prov:${e.p}`;
+      if (e.f >= 0) return { cat: 'city', ico: 'crown', go, html: `${fname(e.f)} wins the province of <b>${P.name}</b>${e.g >= 0 ? ` from ${fname(e.g)}` : ''}.` };
+      if (e.f === DISPUTED) return { cat: 'city', ico: 'swords', go, html: e.g >= 0 ? `<b>${P.name}</b> is no longer ${fname(e.g)}'s alone: the province is disputed.` : `<b>${P.name}</b> is disputed.` };
+      return { cat: 'city', ico: 'dove', go, html: `<b>${P.name}</b> is free again${e.g >= 0 ? ` of ${fname(e.g)}` : ''}.` };
+    }
     case 'rev': return { cat: 'city', ico: 'unrest', html: `<b>${cn}</b> rises in revolt against ${fname(e.g)}.`, go: c ? `city:${c.id}` : null };
     case 'bat': {
       const sub = `${fmtInt(e.l[0])} ${adjOf(e.a)} and ${fmtInt(e.l[1])} ${adjOf(e.d)} dead`;
@@ -42,7 +48,7 @@ export function eventInfo(e) {
 export const deadOf = (e) => (e.l ? e.l[0] + e.l[1] : 0);
 // what power V knows of: diplomacy is public, and so is a province changing hands; the rest only if it saw it
 export function knownTo(e, V) {
-  if (e.k === 'war' || e.k === 'peace' || e.k === 'fall' || !GS.fog) return true;
+  if (e.k === 'war' || e.k === 'peace' || e.k === 'fall' || e.k === 'prov' || !GS.fog) return true;   // the map shows who holds a province
   if (e.k === 'bat' && (e.a === V || e.d === V)) return true;
   if (e.k === 'rev' && e.g === V) return true;
   const c = cityOf(e);
@@ -50,7 +56,7 @@ export function knownTo(e, V) {
   return sawIt(e, V);
 }
 // small skirmishes between others are left out of 'All'
-export const notable = (e, V) => e.k !== 'bat' || e.a === V || e.d === V || (e.p === 'c' && e.w === 0) || deadOf(e) >= 250;
+export const notable = (e, V) => (e.k === 'prov' ? e.f === V || e.g === V : e.k !== 'bat' || e.a === V || e.d === V || (e.p === 'c' && e.w === 0) || deadOf(e) >= 250);
 export function eventRow(e, I) {
   const tag = I.go ? 'button' : 'div';
   return `<${tag} class="ce ${I.cat}"${I.go ? ` data-act="goto:${I.go}"` : ''}><time>${clock(e.t)}</time><i class="${I.ico}">${GLYPH[I.ico]}</i><span>${I.html}${I.sub ? `<small>${I.sub}</small>` : ''}</span></${tag}>`;
@@ -79,7 +85,7 @@ export function empireTab(V) {
   const provs = MAP.provinces.filter((p) => p.owner === V).length;
   const arms = GS.armies.filter((a) => !a.dead && a.owner === V).sort((a, b) => menOf(b.comp) - menOf(a.comp));
   const men = arms.reduce((m, a) => m + menOf(a.comp), 0);
-  let h = `<div class="kv"><span class="chip">victory points <b>${F.pts}</b> of ${STAND.need}</span><span class="chip">provinces <b>${provs}</b></span><span class="chip">cities <b>${majors}</b> and <b>${cities.length - majors}</b> towns</span><span class="chip">${IC.men}<b>${fmtInt(men)}</b> men</span></div>`;
+  let h = `<div class="kv"><span class="chip">provinces <b>${provs}</b> of the ${STAND.need} that win</span><span class="chip">disputed <b>${MAP.provinces.filter((P) => P.owner === DISPUTED && holdsIn(P, V)).length}</b></span><span class="chip">cities <b>${majors}</b> and <b>${cities.length - majors}</b> towns</span><span class="chip">${IC.men}<b>${fmtInt(men)}</b> men</span></div>`;
   h += '<table class="ledger"><thead><tr><th scope="col">Per second</th><th scope="col">Stock</th><th scope="col">Income</th><th scope="col">Upkeep</th><th scope="col">Net</th></tr></thead><tbody>'
     + RES.map((r) => `<tr><th scope="row">${IC[r]}${r}</th><td>${fmtInt(F.res[r])}</td><td>+${F.inc[r].toFixed(1)}</td><td>−${F.upk[r].toFixed(1)}</td><td class="${F.net[r] < -0.05 ? 'neg' : F.net[r] > 0.05 ? 'pos' : ''}">${fmtRate(F.net[r])}</td></tr>`).join('') + '</tbody></table>';
   if (F.stretch < 0.995) h += `<div class="note">Overstretched: every income at <b>${Math.round(F.stretch * 100)}%</b>, and conquests settle slowly.</div>`;
@@ -114,8 +120,8 @@ export function warsTab(V) {
     h += `<${mine ? `button data-act="dip:${other}"` : 'div'} class="wr"><div>${sw(f)}${fname(f)} and ${fname(g)}${sw(g)}<em>${clock(GS.time - R.since)}</em></div>`
       + `<small>War score <b>${Math.round(R.sc[f] || 0)}</b> to <b>${Math.round(R.sc[g] || 0)}</b>. ${FACTIONS[f].name} is ${wearyWord(R.w[f] || 0)}, ${FACTIONS[g].name} ${wearyWord(R.w[g] || 0)}.</small></${mine ? 'button' : 'div'}>`;
   }
-  h += '<table class="ledger powers"><thead><tr><th scope="col">Power</th><th scope="col">Points</th><th scope="col">Provinces</th><th scope="col">Men</th></tr></thead><tbody>'
-    + Fs.map((F) => `<tr class="${F.alive ? '' : 'dead'}${F.id === V ? ' me' : ''}"><th scope="row">${sw(F.id)}${F.name}</th><td>${F.pts}</td><td>${MAP.provinces.filter((p) => p.owner === F.id).length}</td><td>${fmtInt(GS.armies.reduce((m, a) => m + (!a.dead && a.owner === F.id ? menOf(a.comp) : 0), 0))}</td></tr>`).join('') + '</tbody></table>';
+  h += '<table class="ledger roster"><thead><tr><th scope="col">Power</th><th scope="col">Provinces</th><th scope="col">Disputed</th><th scope="col">Men</th></tr></thead><tbody>'
+    + Fs.map((F) => `<tr class="${F.alive ? '' : 'dead'}${F.id === V ? ' me' : ''}"><th scope="row">${sw(F.id)}${F.name}</th><td>${F.provs}</td><td>${MAP.provinces.filter((P) => P.owner === DISPUTED && holdsIn(P, F.id)).length}</td><td>${fmtInt(GS.armies.reduce((m, a) => m + (!a.dead && a.owner === F.id ? menOf(a.comp) : 0), 0))}</td></tr>`).join('') + '</tbody></table>';
   return h;
 }
 export function chronTab(V) {

@@ -6,6 +6,7 @@ import { pathLines, ringFor, selRings, setPathLine } from '../render/overlays.js
 import { CAM, projectCell } from '../render/camera.js';
 import { FIG_MEN } from '../render/crowds.js';
 import { FACTIONS } from '../game/data.js';
+import { DISPUTED } from '../game/standing.js';
 import { sideMen } from '../game/battles.js';
 import { fcss, fmt } from './format.js';
 import { _pp, ME, UI } from './state.js';
@@ -39,7 +40,8 @@ export function updateLabels() {
     if (provOp <= 0.02) { if (L.last.vis !== false) { L.el.style.display = 'none'; L.last.vis = false; } continue; }
     if (placeLabel(L, P.cx, P.cy, 1.5, 0)) {
       setStyle(L, 'op', 'opacity', provOp.toFixed(2));
-      setStyle(L, 'col', 'color', P.owner >= 0 ? FACTIONS[P.owner].css : 'rgba(255,255,255,.85)');
+      setStyle(L, 'col', 'color', P.owner >= 0 ? FACTIONS[P.owner].css : P.owner === DISPUTED ? '#f1e6cd' : 'rgba(255,255,255,.85)');
+      setStyle(L, 'dis', 'textDecoration', P.owner === DISPUTED ? 'underline dashed rgba(241, 230, 205, .7)' : 'none');   // disputed: dashed underline
     }
   }
   const showSmall = d < 95, showMil = d < 55;

@@ -13,7 +13,7 @@ export const FACTIONS = [
   { name: 'Rome', adj: 'Roman', crest: 'ROMA', color: '#c62a22', css: '#ee4b3c', mix: { spear: 0.25, leg: 0.45, arch: 0.15, cav: 0.15 }, aggr: 0.6,
     perk: { name: 'Roman engineering', desc: 'Walls, forts and siege engines cost a third less and go up 40% faster.', build: 0.67, buildTime: 0.6 } },
   { name: 'Carthage', adj: 'Punic', crest: 'CARTHAGO', color: '#7a3fd0', css: '#ad7bff', mix: { spear: 0.35, leg: 0.3, arch: 0.15, cav: 0.2 }, aggr: 0.6,
-    perk: { name: 'Mercenaries and merchants', desc: 'Hired troops bring their own grain: units need 35% less food to raise and to feed. Punic traders get better market prices (sell for 95 gold, buy for 110).', costMul: { food: 0.65 }, feed: 0.65, market: { buy: 110, sell: 95 } } },
+    perk: { name: 'Mercenaries and merchants', desc: 'Hired troops bring their own grain: units need 35% less food to raise and to feed. Punic harbours trade: every coastal city earns 0.6 gold/s more, and the markets pay better (sell for 95 gold, buy for 110).', costMul: { food: 0.65 }, feed: 0.65, market: { buy: 110, sell: 95 }, port: 3 } },
   { name: 'Gaul', adj: 'Gallic', crest: 'GALLIA', color: '#1f5fd6', css: '#4c93ff', mix: { spear: 0.25, leg: 0.4, arch: 0.1, cav: 0.25 }, aggr: 0.85,
     perk: { name: 'Tribal levies', desc: 'Every unit musters 40% faster and costs 20% less.', recruitTime: 0.6, unitCost: 0.8 } },
   { name: 'Egypt', adj: 'Egyptian', crest: 'AEGYPTUS', color: '#e8a40c', css: '#ffc72e', mix: { spear: 0.3, leg: 0.35, arch: 0.2, cav: 0.15 }, aggr: 0.6,
@@ -115,5 +115,7 @@ export const DIFFS = [
 export const diffOf = () => (GS.auto ? DIFFS[1] : DIFFS[GS.diff == null ? 1 : GS.diff]);
 export const K_DMG = 0.075, ROUND_T = 0.55, BASE_SPEED = 0.8, LOYAL_TIME = 150, PEACE_TIME = 240;
 // Settlement points: a major city counts 3, a town 1. Victory, the empire's size and the land income all go by these.
-export const GANG_AT = 0.36, PACT_TIME = 180, TREATY_TIME = 150, OATH_TIME = 240, PEACE_WILL = 0.3, TRIBUTE_FLOOR = -0.1;
+// the others turn on a power holding more than RIVALRY.gangAt of the provinces (five sixths of the way to victory), the harder (up to gangMax) the further past it
+export const RIVALRY = { gangAt: 0.5, gangMax: 1, gangK: 6 };
+export const PACT_TIME = 180, TREATY_TIME = 150, OATH_TIME = 240, PEACE_WILL = 0.3, TRIBUTE_FLOOR = -0.1;
 export const FORT_GUARD = 6, PLUNDER = 0.4, REVOLT_RATE = 0.012;

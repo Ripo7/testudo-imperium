@@ -8,6 +8,7 @@ import { buildTrees } from './vegetation.js';
 import { buildCityMesh, buildFields, buildRoads, waveFlagMaterial } from './cities.js';
 import { LIGHT, SKY_MAT, withClouds } from './atmosphere.js';
 import { FACTIONS } from '../game/data.js';
+import { DISPUTED } from '../game/standing.js';
 
 /* =========================================================
    World build
@@ -159,7 +160,7 @@ export function buildBorderMesh() {
   for (const L of borderLines) {
     const ol = MAP.provinces[L.left].owner, or = MAP.provinces[L.right].owner;
     const pts = L.pts;
-    if (ol === or) { band(pts, 1, 0, 0.05, dark, 0.7, 0.55); band(pts, -1, 0, 0.05, dark, 0.7, 0.55); continue; }
+    if (ol === or && ol !== DISPUTED) { band(pts, 1, 0, 0.05, dark, 0.7, 0.55); band(pts, -1, 0, 0.05, dark, 0.7, 0.55); continue; }
     for (const [sgn, o] of [[1, ol], [-1, or]]) {
       band(pts, sgn, 0, 0.055, dark, 0.95, 0.95);
       if (o >= 0) band(pts, sgn, 0.055, 0.3, ownC(o), 1, 0.5);

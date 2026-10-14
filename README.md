@@ -1,10 +1,11 @@
 # Testudo Imperium
 
-Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a procedurally generated continent: raise armies, wall your cities, plunder enemy provinces, and make peace when the war turns against you.
+Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a procedurally generated continent: raise armies, wall your cities, plunder enemy provinces, and make peace when the war turns against you. Win by holding 60% of the provinces, each one whole.
 
-![A campaign in progress](docs/screenshot-campaign.jpg)
+![A campaign in progress, political map: the hatched province is disputed](docs/screenshot-campaign.jpg)
 
-- **Four powers, each with its own elite unit and speciality**: Roman legionaries and engineering, Punic war elephants and merchants, Gallic gaesatae and tribal levies, Egyptian chariots and the gift of the Nile.
+- **Four powers, each with its own elite unit and speciality**: Roman legionaries and engineering, Punic war elephants, mercenaries and harbours, Gallic gaesatae and tribal levies, Egyptian chariots and the gift of the Nile.
+- **Provinces are won whole**: a province is yours only while you hold its major city, every town and every fort built in it. Split between holders it is disputed, hatched on the map and counting for nobody. Forts are one more place to hold, and a way to keep a rival from completing a province.
 - **Terrain matters on the march**: armies go twice as fast on roads, slowly through forests and very slowly over mountains, and wide rivers can only be crossed on a bridge (narrow streams can be waded).
 - **Fog of war, for everyone**: each power, the AI included, only sees the land around its cities, armies and forts; cavalry and high ground see further. The AI judges unseen cities by its last report.
 - **Battles decided by strategy**: terrain, rivers, walls, flanks, stance and the odds you accept. Retreat when a battle turns.

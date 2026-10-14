@@ -42,14 +42,14 @@ export function checkFactions() {
   const majors = MAP.cities.filter((c) => c.major);
   if (GS.auto) {
     updateStanding();
-    const lead = GS.factions.find((F) => F.alive && F.pts >= STAND.need);
+    const lead = GS.factions.find((F) => F.alive && F.provs >= STAND.need);
     const alive = GS.factions.filter((F) => F.alive);
     if (lead || alive.length <= 1) { sampleHistory(); endAuto(lead || alive[0] || GS.factions[0]); }
     return;
   }
   updateStanding();
-  const mine = GS.factions[PLAYER].pts, need = STAND.need;
-  const rival = GS.factions.find((F) => !F.isPlayer && F.pts >= need);
+  const mine = GS.factions[PLAYER].provs, need = STAND.need;
+  const rival = GS.factions.find((F) => !F.isPlayer && F.alive && F.provs >= need);
   if (mine >= need || GS.factions.every((F) => F.isPlayer || !F.alive)) { sampleHistory(); endCampaign(true); }
   else if (!majors.some((c) => c.owner === PLAYER) || rival) { GS.rival = rival ? rival.name : null; GS.rivalF = rival ? rival.id : -1; sampleHistory(); endCampaign(false); }
 }

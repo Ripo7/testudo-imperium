@@ -1,7 +1,7 @@
 import { groundInfo, mergeArmies, orderTarget, splitArmy } from '../game/armies.js';
 import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
 import { atWar, declareWar, mins, peaceAnswer, relOf, renewTreaty, suePeace, treatyAnswer, wearyWord } from '../game/diplomacy.js';
-import { provSecure, provW, SET_W } from '../game/standing.js';
+import { DISPUTED, holdsIn, placesOf, provSecure, provW, SET_W } from '../game/standing.js';
 import { canAfford, dist, emptyComp, GS, MAP, menOf, ownerName, provAt, starsOf } from '../game/state.js';
 import { isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
@@ -70,7 +70,7 @@ export function dipPanel(g) {
   const war = atWar(PLAYER, g), lockL = R.lock - GS.time;
   const status = !G.alive ? 'Wiped out' : war ? `At war with ${pName()} for ${clockStr(GS.time - R.since)}` : lockL > 0 ? (R.lock === PEACE_TIME ? 'Opening truce' : 'Peace treaty') : 'At peace, no treaty';
   let h = headerHtml(G.css, G.name, status) + '<div class="pb">';
-  h += `<div class="kv"><span class="chip">${IC.men}men <b>${fmtInt(men(g))}</b> vs ${fmtInt(men(PLAYER))}</span><span class="chip">points <b>${G.pts}</b> vs ${P.pts}</span></div>`;
+  h += `<div class="kv"><span class="chip">${IC.men}men <b>${fmtInt(men(g))}</b> vs ${fmtInt(men(PLAYER))}</span><span class="chip">provinces <b>${G.provs}</b> vs ${P.provs}</span></div>`;
   const others = GS.factions.filter((X) => X.alive && X.id !== g && X.id !== PLAYER && atWar(g, X.id)).map((X) => X.name);
   h += `<div class="note">${others.length ? `Also at war with <b>${others.join('</b> and <b>')}</b>.` : 'At peace with the other powers.'}</div>`;
   if (!G.alive) return h + '</div>';
@@ -112,8 +112,10 @@ export function cityPanel(c) {
   let sub = `${c.major ? 'Major city' : 'Town'} of ${P.name} · ${ownerName(c.owner)}${c.capital ? ' · capital' : ''}`;
   let h = headerHtml(fcss(c.owner), (c.capital ? '★ ' : '') + c.name, sub) + '<div class="pb">';
   const known = seesCity(c);
+  const provLine = `<div class="note">Province of ${P.name}: ${provStatus(P)}.</div>`;
   h += `<div class="kv"><span class="chip">${IC.men}militia <b>${known ? fmtInt(c.militia) : '?'}</b>/${known ? fmtInt(c.militiaMax) : '?'}</span><span class="chip">${IC.walls}walls <b style="letter-spacing:-1px">${wallsDots(c.walls)}</b></span>${besieged && known ? '<span class="chip" style="background:#8a2018">Under attack</span>' : ''}</div>`;
   const k = 0.8 * c.loyal, sc = (y) => Object.fromEntries(RES.map((r) => [r, y[r] * k]));
+  h += provLine;
   if (c.loyal < 0.99) h += `<div class="note">Recently conquered: the people are restless, income at <b>${Math.round(c.loyal * 100)}%</b> (recovers over time).</div>`;
   if (c.owner >= 0) {
     const secure = provSecure(P), pct = Math.round(SET_W(c) / provW(P) * 100);
@@ -167,7 +169,8 @@ export function cityPanel(c) {
       h += oddsHtml(o, 'If your selected army attacks');
     } else h += `<div class="note">Select one of your armies, then ${isTouch ? 'tap' : 'right-click'} this city to see your odds and attack it.</div>`;
     if (c.imps.length) h += '<div class="sect">Improvements (the last one is looted if you take it)</div><div class="kv">' + c.imps.map((id) => `<span class="chip" title="${IMPS[id].desc}">${IMPS[id].ico} ${IMPS[id].name}</span>`).join('') + '</div>';
-    h += `<div class="note">Taking <b>${c.name}</b> gives you ${Math.round(SET_W(c) / provW(P) * 100)}% of ${P.name}'s land income${c.major ? ' and the province colours' : ''}${c.major ? ', worth 3 victory points' : ', worth 1 victory point'}. Hold every settlement of a province for a +12% bonus.</div>`;
+    const left = placesOf(P).filter((x) => x.ref !== c && x.ref.owner !== ME).length;
+    h += `<div class="note">Taking <b>${c.name}</b> gives you ${Math.round(SET_W(c) / provW(P) * 100)}% of ${P.name}'s land income${left ? `. ${P.name} would still have ${left} place${left > 1 ? 's' : ''} to take before it is yours.` : `, and wins you the province of ${P.name}.`}</div>`;
   }
   h += '</div>';
   return h;
@@ -196,7 +199,7 @@ export function myArmyPanel(list) {
   const a0 = list[0];
   const stars = list.length === 1 ? starsOf(a0) : 0;
   const title = list.length > 1 ? `${list.length} ${pAdj()} armies` : `${pAdj()} army`;
-  const p = provAt(a0.x, a0.y), home = p >= 0 && MAP.provinces[p].owner === ME, forage = p >= 0 && atWar(ME, MAP.provinces[p].owner);
+  const p = provAt(a0.x, a0.y), Pv = p >= 0 ? MAP.provinces[p] : null, home = !!Pv && holdsIn(Pv, ME), forage = !!Pv && Pv.holders.some((x) => atWar(ME, x));
   let upk = 0; for (const a of list) { for (const t of ['spear', 'leg', 'arch', 'cav']) upk += a.comp[t] / 100 * U(t, a.owner).upk * (perkOf(a.owner).feed || 1); upk += a.comp.siege * UNITS.siege.upk; }
   let h = headerHtml(fcss(ME), `${title} · ${fmtInt(men)}${stars ? ' <span style="color:var(--gold);font-size:15px">' + '★'.repeat(stars) + '</span>' : ''}`, list.length === 1 ? armyStatus(a0) : 'Several armies selected') + '<div class="pb">';
   h += compHtml(comp, ME);
@@ -251,12 +254,26 @@ export function fortPanel(f) {
 export function provPanel(P) {
   const n = P.cells.length, C = P.counts;
   const seg = [[BIOME.PLAINS, '#8cbc58', 'plains'], [BIOME.STEPPE, '#c4b971', 'steppe'], [BIOME.FOREST, '#3f7a35', 'forest'], [BIOME.DESERT, '#e6c47e', 'desert'], [BIOME.HILLS, '#a69b6a', 'hills'], [BIOME.MOUNTAIN, '#8a8174', 'mountains'], [BIOME.SNOW, '#f3f5f8', 'peaks'], [BIOME.BEACH, '#e3d199', 'coast']];
-  let h = headerHtml(fcss(P.owner), P.name, `Province · held by ${ownerName(P.owner)}`) + '<div class="pb">';
+  let h = headerHtml(fcss(P.owner), P.name, `Province · ${provStatus(P)}`) + '<div class="pb">';
   h += '<div class="terrbar">' + seg.map(([b, c]) => `<i style="background:${c};width:${(C[b] / n * 100).toFixed(1)}%"></i>`).join('') + '</div>';
   h += '<div class="kv">' + seg.filter(([b]) => C[b] / n > 0.04).map(([b, c, nm]) => `<span class="chip"><i style="width:9px;height:9px;border-radius:2px;background:${c}"></i>${nm} ${Math.round(C[b] / n * 100)}%</span>`).join('') + '</div>';
-  h += `<div class="sect">Land yield, split between its settlements (+12% if one power holds them all)</div><div class="kv">${yieldChips(Object.fromEntries(RES.map((r) => [r, P.yield[r] * 0.8])))}</div>`;
-  h += '<div class="sect">Settlements</div>' + [P.major, ...P.small].map((id) => { const c = MAP.cities[id]; return `<div class="kv"><span class="chip" style="border-left:4px solid ${fcss(c.owner)}">${c.major ? '★ ' : ''}${c.name} · ${ownerName(c.owner)} · ${Math.round(SET_W(c) / provW(P) * 100)}%</span></div>`; }).join('');
+  h += `<div class="sect">Land yield, split between its settlements (+12% while held whole)</div><div class="kv">${yieldChips(Object.fromEntries(RES.map((r) => [r, P.yield[r] * 0.8])))}</div>`;
+  const pl = placesOf(P);
+  h += `<div class="sect">Places · ${pl.length}, all needed to hold it</div><div class="list">` + pl.map((x) => (x.kind === 'city'
+    ? `<button class="li" data-act="selcity:${x.ref.id}"><i class="sw" style="background:${fcss(x.ref.owner)}"></i><span class="cn">${x.ref.major ? '★ ' : ''}${x.ref.name}</span><span class="what">${ownerName(x.ref.owner)}</span><em title="Share of the land income">${Math.round(SET_W(x.ref) / provW(P) * 100)}%</em></button>`
+    : `<div class="li"><i class="sw" style="background:${fcss(x.ref.owner)}"></i><span class="cn">Fort</span><span class="what">${ownerName(x.ref.owner)}</span></div>`)).join('') + '</div>';
+  if (!GS.auto && P.owner !== ME) {
+    const left = pl.filter((x) => x.ref.owner !== ME).length;
+    h += `<div class="note">${left} place${left > 1 ? 's' : ''} to take before ${P.name} is ${pName()}'s.${P.owner >= 0 ? '' : ' A fort finished inside a province counts as one of its places.'}</div>`;
+  }
   return h + '</div>';
+}
+// a province's standing, in words
+export function provStatus(P) {
+  if (P.owner >= 0) return `held whole by ${ownerName(P.owner)}`;
+  if (P.owner !== DISPUTED) return 'free, no power holds a place in it';
+  const names = P.holders.filter((x) => x >= 0).map((x) => ownerName(x));
+  return `disputed between ${names.join(' and ')}${P.holders.includes(-1) ? `${names.length ? ' and ' : ''}free towns` : ''}`;
 }
 export function battlePanel(B) {
   const s0 = B.sides[0], s1 = B.sides[1];

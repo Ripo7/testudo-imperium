@@ -1,5 +1,5 @@
 import { atWar } from './diplomacy.js';
-import { FAIR_SHARE, OVER_SLOW, provSecure, provW, SECURE, SET_W, updateStanding } from './standing.js';
+import { fairShare, holdsIn, OVER_SLOW, provSecure, provW, SECURE, SET_W, updateStanding } from './standing.js';
 import { canAfford, cellOf, emptyComp, GS, MAP, menOf, pay, provAt } from './state.js';
 import { BIOME } from '../map/generate.js';
 import { buildFortMesh, refreshCityMesh, refreshFortMesh } from '../render/cities.js';
@@ -35,11 +35,12 @@ export function economy(dt) {
     if (!GS.raid.has(p)) GS.raid.set(p, []);
     GS.raid.get(p).push(a);
   }
+  const fair = fairShare();
   for (const c of MAP.cities) {
     const own = c.owner >= 0 ? GS.factions[c.owner] : null;
     // a sprawling empire is slow to settle its conquests
     const temple = own && hasImp(c, 'temple');
-    if (c.loyal < 1) c.loyal = Math.min(1, c.loyal + dt * (temple ? 3 : 1) / (LOYAL_TIME * (own ? 1 + OVER_SLOW * Math.max(0, own.share - FAIR_SHARE) : 1)));
+    if (c.loyal < 1) c.loyal = Math.min(1, c.loyal + dt * (temple ? 3 : 1) / (LOYAL_TIME * (own ? 1 + OVER_SLOW * Math.max(0, own.share - fair) : 1)));
     if (own && c.impBuild) {
       const ib = c.impBuild; ib.t += dt / (IMPS[ib.id].time * buildTime(c.owner));
       if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); onImpDone(c, ib.id); }
@@ -64,8 +65,9 @@ export function economy(dt) {
     if (a.dead) continue;
     const F = GS.factions[a.owner];
     const p = provAt(a.x, a.y);
-    const home = p >= 0 && MAP.provinces[p].owner === a.owner;
-    const k = home || (p >= 0 && atWar(a.owner, MAP.provinces[p].owner)) ? 1 : 1.35;   // at war, they forage on enemy land
+    const P = p >= 0 ? MAP.provinces[p] : null;
+    const home = !!P && holdsIn(P, a.owner);
+    const k = home || (P && P.holders.some((h) => atWar(a.owner, h))) ? 1 : 1.35;   // at war, they forage on enemy land
     for (const t of ['spear', 'leg', 'arch', 'cav']) F.upk.food += a.comp[t] / 100 * U(t, a.owner).upk * k * (perkOf(a.owner).feed || 1);
     F.upk.food += a.comp.siege * UNITS.siege.upk;
     F.upk.gold += armyPay(a);
@@ -158,7 +160,7 @@ export function fortSpotOk(f, x, y) {
   const b = MAP.biome[i];
   if (b === BIOME.MOUNTAIN || b === BIOME.SNOW || MAP.river[i]) return false;
   const p = MAP.prov[i];
-  if (p < 0 || MAP.provinces[p].owner !== f) return false;
+  if (p < 0 || !holdsIn(MAP.provinces[p], f)) return false;
   if (MAP.cities.some((c) => Math.hypot(c.x - x, c.y - y) < 3)) return false;
   if (GS.forts.some((o) => Math.hypot(o.x - x, o.y - y) < 4)) return false;
   return true;

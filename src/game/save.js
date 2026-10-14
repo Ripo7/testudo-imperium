@@ -76,6 +76,9 @@ export function restoreGame(S) {
     const f = { id: d.id, owner: d.o, x: d.x, y: d.y, built: d.b, militia: d.m, dead: false, battle: null };
     GS.forts.push(f); forts.set(f.id, f);
   }
+  // provinces from the restored cities and forts, as they stood (not a change to put in the chronicle)
+  for (const P of MAP.provinces) P.sig = undefined;
+  updateStanding();
   for (const d of S.armies) {
     const a = {
       id: d.id, owner: d.o, comp: Object.assign(emptyComp(), d.comp), x: d.x, y: d.y, heading: d.h || 0,

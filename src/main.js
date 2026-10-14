@@ -1,6 +1,8 @@
 import { fogShown, seesBattle, SIGHT } from './game/sight.js';
+import { PROV } from './game/standing.js';
+import { updateTerrainColors } from './render/terrain.js';
 import { initAtmosphere, updateFogTexture } from './render/atmosphere.js';
-import { GS } from './game/state.js';
+import { GS, MAP } from './game/state.js';
 import { Sfx } from './core/audio.js';
 import { camera, renderer, scene } from './render/renderer.js';
 import { buildEnvironment } from './render/world.js';
@@ -41,7 +43,7 @@ function boot(data) {
   requestAnimationFrame(frame);
 }
 
-let last = performance.now(), testFreeze = false, testNoRender = false, battleSoundT = 0, saveT = 15;
+let last = performance.now(), testFreeze = false, testNoRender = false, battleSoundT = 0, saveT = 15, provV = -1;
 // test hooks (see src/debug.js)
 export function setTestNoRender(v) { testNoRender = v; }
 export function setTestFreeze(v) { testFreeze = v; }
@@ -62,6 +64,7 @@ function frame(now) {
   updateCrowds(UI.t);
   updateDust(rdt);
   SIGHT.on = fogShown(); updateFogTexture();
+  if (PROV.version !== provV && MAP) { provV = PROV.version; updateTerrainColors(); }   // a place changed hands: repaint the provinces
   if (UI.mode === 'play') {
     updateSelectionVisuals();
     UI.hudT -= rdt;

@@ -1,5 +1,5 @@
 import { atWar, fname, hideEnvoy, makePeace, relOf, treatyOn, warsOf } from '../game/diplomacy.js';
-import { STAND } from '../game/standing.js';
+import { DISPUTED, holdsIn, placesOf, STAND } from '../game/standing.js';
 import { GS, MAP, menOf, ownerName } from '../game/state.js';
 import { $, isTouch, store } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
@@ -49,26 +49,28 @@ export function updateHUD() {
   const s = Math.floor(GS.time);
   $('clock').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   document.querySelectorAll('#speed button').forEach((b) => b.classList.toggle('on', +b.dataset.sp === GS.speed));
-  const need = STAND.need, ago = sampleAgo(60);
+  const need = STAND.need, ago = sampleAgo(60), np = GS.factions.length, PB = 1 + 3 * np;   // PB: provinces in the history rows
+  const disputedFor = (f) => MAP.provinces.filter((P) => P.owner === DISPUTED && holdsIn(P, f)).length;
   let h = `<h4>The powers${GS.auto ? ', all AI' : ''}</h4>`;
   if (GS.auto && GS.fog) h += `<div class="note" style="margin:-2px 0 4px;font-size:11.5px">Seen through the eyes of <b style="color:${FACTIONS[UI.viewF].css}">${FACTIONS[UI.viewF].name}</b> · click a power to switch</div>`;
   let lead = null, leadN = -1;
   for (const Fx of GS.factions) {
-    const prov = Fx.pts;
+    const prov = Fx.provs;
     if (prov > leadN) { leadN = prov; lead = Fx; }
     const men = GS.armies.reduce((m, a) => m + (!a.dead && a.owner === Fx.id ? menOf(a.comp) : 0), 0);
     const view = GS.auto && Fx.id === UI.viewF;
-    const d = ago && Fx.alive ? Fx.pts - ago[1 + Fx.id] : 0;
-    const trend = d ? `<small class="tr ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'Gained' : 'Lost'} ${Math.abs(d)} point${Math.abs(d) > 1 ? 's' : ''} in the last minute">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</small>` : '';
+    const d = ago && Fx.alive && ago[PB + Fx.id] != null ? prov - ago[PB + Fx.id] : 0;
+    const trend = d ? `<small class="tr ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'Won' : 'Lost'} ${Math.abs(d)} province${Math.abs(d) > 1 ? 's' : ''} in the last minute">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</small>` : '';
+    const dis = Fx.alive ? disputedFor(Fx.id) : 0;
     const tip = !GS.auto && Fx.isPlayer ? 'Overview of your realm' : GS.auto ? `Follow ${Fx.name}` : `Talk to ${Fx.name}`;
-    h += `<div class="row${Fx.alive ? '' : ' dead'}${view ? ' view' : ''}"${GS.auto || Fx.alive ? ` data-f="${Fx.id}" title="${tip}"` : ''}><i class="sw" style="background:${Fx.css}"></i><span class="nm">${Fx.name}${!GS.auto && Fx.isPlayer ? ' (you)' : ''}${relMark(Fx)}${Fx.alive && Fx.stretch < 0.995 ? ` <small class="over" title="Overstretched: income at ${Math.round(Fx.stretch * 100)}%">−${Math.round((1 - Fx.stretch) * 100)}%</small>` : ''}</span><b title="Victory points: major city 3, town 1">${trend}${prov}</b><span title="Men under arms">${fmt(men)}</span>${Fx.alive ? `<i class="vb" title="${prov} of the ${need} points that win the war"><i style="width:${Math.min(100, prov / need * 100).toFixed(1)}%;background:${Fx.css}"></i></i>` : ''}</div>`;
+    h += `<div class="row${Fx.alive ? '' : ' dead'}${view ? ' view' : ''}"${GS.auto || Fx.alive ? ` data-f="${Fx.id}" title="${tip}"` : ''}><i class="sw" style="background:${Fx.css}"></i><span class="nm">${Fx.name}${!GS.auto && Fx.isPlayer ? ' (you)' : ''}${relMark(Fx)}${Fx.alive && Fx.stretch < 0.995 ? ` <small class="over" title="Overstretched: income at ${Math.round(Fx.stretch * 100)}%">−${Math.round((1 - Fx.stretch) * 100)}%</small>` : ''}</span><b title="Provinces held whole${dis ? `, and ${dis} more disputed` : ''}">${trend}${prov}</b><span title="Men under arms">${fmt(men)}</span>${Fx.alive ? `<i class="vb" title="${prov} of the ${need} provinces that win the war${dis ? `; ${dis} more disputed` : ''}"><i style="width:${Math.min(100, prov / need * 100).toFixed(1)}%;background:${Fx.css}"></i></i>` : ''}</div>`;
   }
   const W = warsList();
   if (W.length) h += '<div class="wars">' + W.map((w) => `<button class="${w.war ? 'w' : 'p'}" data-wars title="${FACTIONS[w.f].name} and ${FACTIONS[w.g].name}: ${w.war ? `at war for ${clock(w.t)}` : `treaty, ${clock(w.t)} left`}"><i class="sw" style="background:${fcss(w.f)}"></i>${w.war ? GLYPH.swords : GLYPH.dove}<i class="sw" style="background:${fcss(w.g)}"></i><span>${clock(w.t)}</span></button>`).join('') + '</div>';
-  if (GS.auto) h += `<div id="goal">Leader: <b style="color:${lead.css}">${lead.name}</b> ${leadN}/${need} pts<div class="gbar"><i style="width:${Math.min(100, leadN / need * 100)}%;background:${lead.css}"></i></div></div>`;
+  if (GS.auto) h += `<div id="goal">Leader: <b style="color:${lead.css}">${lead.name}</b>, ${leadN} of ${need} provinces<div class="gbar"><i style="width:${Math.min(100, leadN / need * 100)}%;background:${lead.css}"></i></div></div>`;
   else {
-    const mine = GS.factions[ME].pts;
-    h += `<div id="goal">Victory points: <b>${mine}/${need}</b><div class="gbar"><i style="width:${Math.min(100, mine / need * 100)}%"></i></div></div>`;
+    const mine = GS.factions[ME].provs, dis = disputedFor(ME);
+    h += `<div id="goal">Provinces: <b>${mine} of ${need}</b>${dis ? `, ${dis} disputed` : ''}<div class="gbar"><i style="width:${Math.min(100, mine / need * 100)}%"></i></div></div>`;
   }
   // compared with what was last written, not with innerHTML: the browser writes some markup back differently (SVG),
   // so that comparison never matched and the box was rebuilt four times a second, its tooltips with it
@@ -231,6 +233,9 @@ export function onBattleEnd(B) {
 }
 export function onCityCaptured(c, prev, f) {
   const P = MAP.provinces[c.prov];
+  // the province as it stands now (its owner is only updated at the next step): whole for f, or how many places are left
+  const pl = placesOf(P), left = pl.filter((x) => x.ref.owner !== f).length;
+  const wasWhole = prev >= 0 && pl.every((x) => x.ref === c || x.ref.owner === prev);
   if (f < 0) {
     if (prev >= 0 && (prev === ME || c.major || GS.auto)) log(`<b>${c.name}</b> rises in revolt against ${fname(prev)}.`, prev === ME && !GS.auto ? 'bad' : 'info', c);
     if (UI.selCity === c) renderPanel(true);
@@ -238,7 +243,7 @@ export function onCityCaptured(c, prev, f) {
   }
   if (GS.auto) {
     if (c.major) {
-      log(`<b style="color:${fcss(f)}">${ownerName(f)}</b> takes ${c.name}${prev >= 0 ? ` from ${ownerName(prev)}` : ''} · ${P.name} changes hands`, prev >= 0 ? 'bad' : 'info', c);
+      log(`<b style="color:${fcss(f)}">${ownerName(f)}</b> takes ${c.name}${prev >= 0 ? ` from ${ownerName(prev)}` : ''}${left ? '' : `, and with it ${P.name}`}`, prev >= 0 ? 'bad' : 'info', c);
       if (DIR.on && !DIR.busyBig() && DIR.hold < 1e8) { DIR.tgt = { kind: 'spot', x: c.x, y: c.y, d: 42 }; DIR.hold = 4; }
     }
     if (UI.selCity === c) renderPanel(true);
@@ -246,10 +251,10 @@ export function onCityCaptured(c, prev, f) {
   }
   if (f === ME) {
     GS.stats.captured++;
-    log(`<b>${c.name}</b> is ours!${c.major ? ` The province of ${P.name} bows to ${pName()}.` : ''}`, 'good', c);
+    log(`<b>${c.name}</b> is ours!${left ? ` ${left} more place${left > 1 ? 's' : ''} to take in ${P.name}.` : ` The province of ${P.name} is ${pName()}'s.`}`, 'good', c);
   } else if (prev === ME) {
-    log(`<b>${c.name}</b> has fallen to ${ownerName(f)}.${c.major ? ` The province of ${P.name} is lost.` : ''}`, 'bad', c);
-  } else if (c.major) log(`${ownerName(f)} took ${c.name} (${P.name}).`, 'info', c);
+    log(`<b>${c.name}</b> has fallen to ${ownerName(f)}.${wasWhole ? ` ${P.name} is no longer ours alone: it is disputed.` : ''}`, 'bad', c);
+  } else if (!left) log(`${ownerName(f)} took ${c.name}, and with it ${P.name}.`, 'info', c);
   if (UI.selCity === c) renderPanel(true);
 }
 export function onWallsDone(c) { if (c.owner === ME) log(`The walls of <b>${c.name}</b> now stand at level ${c.walls}.`, 'info', c); }
