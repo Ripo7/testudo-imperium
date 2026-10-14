@@ -16,7 +16,7 @@ import {
   tapAt, UI,
 } from './state.js';
 import { renderPanel } from './panel.js';
-import { focusOn, setSpeed } from './hud.js';
+import { focusOn, setSpeed, toggleOverview } from './hud.js';
 import { openMenu, setMuteIcon } from './screens.js';
 import { DIR, manualCam, setFollow, togglePolitical } from './director.js';
 
@@ -144,8 +144,9 @@ window.addEventListener('keydown', (e) => {
     case 'Digit3': setSpeed(4); break;
     case 'Digit4': setSpeed(8); break;
     case 'KeyP': togglePolitical(); break;
+    case 'KeyO': toggleOverview(); break;
     case 'KeyF': if (GS.auto) setFollow(!DIR.on); break;
-    case 'Escape': if (UI.placing) stopPlacing(); else if (UI.sel.length || UI.selCity || UI.selEnemy || UI.selFort || UI.selBattle || UI.selProv != null) { clearSel(); renderPanel(true); } else openMenu(); break;
+    case 'Escape': if (UI.placing) stopPlacing(); else if (UI.sel.length || UI.selCity || UI.selEnemy || UI.selFort || UI.selBattle || UI.selOver || UI.selDip != null || UI.selProv != null) { clearSel(); renderPanel(true); } else openMenu(); break;
     case 'KeyH': { const who = GS.auto ? UI.viewF : ME; const cap = MAP.cities.find((c) => c.capital && c.owner === who) || MAP.cities.find((c) => c.owner === who && c.major); if (cap) { manualCam(); focusOn(cap); } break; }
     case 'KeyM': Sfx.init(); Sfx.toggle(); setMuteIcon(); break;
   }

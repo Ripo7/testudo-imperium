@@ -8,6 +8,7 @@ import { fcss } from '../ui/format.js';
 import { ME, UI } from '../ui/state.js';
 import { log } from '../ui/hud.js';
 import { clockStr } from './save.js';
+import { recordPeace, recordWar } from './chronicle.js';
 
 // Diplomacy: every pair of powers is either at war or at peace. A peace treaty binds both sides for a while;
 // after it lapses they stay at peace until one of them declares war. Wars wear powers down until they make peace.
@@ -29,6 +30,7 @@ export function declareWar(f, g, quiet) {
   const broke = R.lock > GS.time;
   Object.assign(R, { war: true, since: GS.time, lock: 0, w: { [f]: 0, [g]: 0 }, sc: { [f]: 0, [g]: 0 } });
   if (broke) GS.factions[f].oath = GS.time + OATH_TIME;
+  recordWar(f, g, broke);
   if (UI.envoy && (UI.envoy.g === f || UI.envoy.g === g)) hideEnvoy();
   if (quiet) return;
   const mine = !GS.auto && (f === ME || g === ME);
@@ -40,6 +42,7 @@ export function makePeace(f, g, dur, payer, gold) {
   let paid = 0;
   if (payer != null && gold > 0) { const P = GS.factions[payer], Q = GS.factions[payer === f ? g : f]; paid = Math.max(0, Math.min(gold, Math.floor(P.res.gold))); P.res.gold -= paid; Q.res.gold += paid; }
   Object.assign(R, { war: false, since: GS.time, lock: GS.time + dur });
+  recordPeace(f, g, payer, paid);
   for (const B of GS.battles) {
     if (B.done || !((B.sides[0].faction === f && B.sides[1].faction === g) || (B.sides[0].faction === g && B.sides[1].faction === f))) continue;
     B.done = true; B.endT = GS.time; B.winner = -1;
@@ -169,13 +172,14 @@ export function dipTick() {
   }
 }
 // disloyal cities of a stretched empire, with no garrison and no temple, may rise in revolt
+// chance per second that a disloyal city with no garrison and no temple revolts
+export const revoltRisk = (c, F) => (0.5 - c.loyal) * REVOLT_RATE * (F.stretch < 0.995 ? 1 + (1 - F.stretch) * 5 : 0.5);
 export function revolts() {
   for (const c of MAP.cities) {
     if (c.owner < 0 || c.capital || c.loyal >= 0.5 || hasImp(c, 'temple') || (c.battle && !c.battle.done)) continue;
     const F = GS.factions[c.owner];
     if (GS.armies.some((a) => !a.dead && a.owner === c.owner && Math.abs(a.x - c.x) < 3 && Math.abs(a.y - c.y) < 3)) continue;
-    const p = (0.5 - c.loyal) * REVOLT_RATE * (F.stretch < 0.995 ? 1 + (1 - F.stretch) * 5 : 0.5);
-    if (Math.random() < p) { captureCity(c, NEUTRAL); c.militia = c.militiaMax * 0.6; c.loyal = 1; }
+    if (Math.random() < revoltRisk(c, F)) { captureCity(c, NEUTRAL); c.militia = c.militiaMax * 0.6; c.loyal = 1; }
   }
 }
 export function showEnvoy(g, gold) {

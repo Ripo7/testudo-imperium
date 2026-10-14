@@ -92,6 +92,19 @@ async function scenarioOnce(browser, url, modeBtn, label) {
   const tSaved = await T(page, () => window.__T.GS.time);
   check(Math.abs(tSaved - tLive) < 1, `[${label}] closing the tab saves (${tLive.toFixed(0)}s live, ${tSaved.toFixed(0)}s restored)`);
 
+  if (label === 'autoplay') {
+    // a save from before the war was recorded (no chronicle, no history, two stats per power) still loads, and the report copes
+    const old = await T(page, () => {
+      const T = window.__T, S = JSON.parse(JSON.stringify(T.serializeGame()));
+      delete S.gs.chron; delete S.gs.hist; S.gs.fstats = S.gs.fstats.map((x) => ({ won: x.won, captured: x.captured }));
+      T.setNoRender(true); T.prepareCampaign(0, S);
+      const ok = T.GS.chron.length === 0 && T.GS.hist.length === 0 && T.GS.fstats.every((x) => x.kills === 0 && x.won >= 0);
+      for (let i = 0; i < 300; i++) T.simStep(0.1);
+      T.GS.over = 'auto'; T.GS.winner = 0; T.showOver();
+      return { ok, samples: T.GS.hist.length, report: document.getElementById('report').querySelectorAll('.rep-ledger tbody tr').length };
+    });
+    check(old.ok && old.samples >= 2 && old.report > 10, `[${label}] a save from before the war record loads, records from then on, and gets a report`);
+  }
   if (label === 'rome') {
     await click(page, '#contBtn'); await page.waitForTimeout(200);
     await T(page, () => window.__T.endCampaign(true));

@@ -8,6 +8,7 @@ import { detectContacts, updateBattles } from './battles.js';
 import { economy } from './economy.js';
 import { aiTick } from './ai.js';
 import { endAuto, endCampaign, onEliminated } from '../ui/hud.js';
+import { historyTick, recordFall, sampleHistory } from './chronicle.js';
 
 /* =========================================================
    Simulation step
@@ -25,6 +26,7 @@ export function simStep(dt) {
     F.aiT -= dt;
     if (F.aiT <= 0) { F.aiT = diffOf().tick - 0.3 + Math.random() * 0.6; aiTick(F); }
   }
+  historyTick();
   GS.checkT -= dt;
   if (GS.checkT <= 0) { GS.checkT = 1; checkFactions(); }
 }
@@ -34,7 +36,7 @@ export function checkFactions() {
     if (!F.alive) continue;
     const cities = MAP.cities.some((c) => c.owner === F.id);
     const armies = GS.armies.some((a) => !a.dead && a.owner === F.id);
-    if (!cities && !armies) { F.alive = false; F.eliminatedAt = GS.time; onEliminated(F); }
+    if (!cities && !armies) { F.alive = false; F.eliminatedAt = GS.time; recordFall(F.id); onEliminated(F); }
   }
   if (GS.over) return;
   const majors = MAP.cities.filter((c) => c.major);
@@ -42,12 +44,12 @@ export function checkFactions() {
     updateStanding();
     const lead = GS.factions.find((F) => F.alive && F.pts >= STAND.need);
     const alive = GS.factions.filter((F) => F.alive);
-    if (lead || alive.length <= 1) endAuto(lead || alive[0] || GS.factions[0]);
+    if (lead || alive.length <= 1) { sampleHistory(); endAuto(lead || alive[0] || GS.factions[0]); }
     return;
   }
   updateStanding();
   const mine = GS.factions[PLAYER].pts, need = STAND.need;
   const rival = GS.factions.find((F) => !F.isPlayer && F.pts >= need);
-  if (mine >= need || GS.factions.every((F) => F.isPlayer || !F.alive)) endCampaign(true);
-  else if (!majors.some((c) => c.owner === PLAYER) || rival) { GS.rival = rival ? rival.name : null; endCampaign(false); }
+  if (mine >= need || GS.factions.every((F) => F.isPlayer || !F.alive)) { sampleHistory(); endCampaign(true); }
+  else if (!majors.some((c) => c.owner === PLAYER) || rival) { GS.rival = rival ? rival.name : null; GS.rivalF = rival ? rival.id : -1; sampleHistory(); endCampaign(false); }
 }

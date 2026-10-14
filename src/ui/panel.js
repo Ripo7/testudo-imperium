@@ -11,7 +11,9 @@ import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideMen }
 import { armyPay, buildImp, cityYield, fortify, landShare, marketOf, plunderer, recruit, trade } from '../game/economy.js';
 import { costHtml, costMini, fcss, fmt, fmtInt, IC, icOf } from './format.js';
 import { $hint, $panel, clearSel, issueOrder, ME, myOrderables, oddsHtml, startPlacing, UI } from './state.js';
-import { flashHint, focusOn, log, updateHUD } from './hud.js';
+import { flashHint, focusOn, goTo, log, phoneLayout, updateHUD } from './hud.js';
+import { overviewPanel } from './overview.js';
+import { updateTerrainColors } from '../render/terrain.js';
 import { clockStr } from '../game/save.js';
 import { DIR, setFollow } from './director.js';
 
@@ -20,11 +22,17 @@ export function doAct(act) {
   const F = GS.factions[ME];
   const [cmd, arg] = act.split(':');
   const c = UI.selCity;
-  if (GS.auto && !['close', 'focus', 'follow', 'view'].includes(cmd)) return;
+  if (cmd === 'goto') { goTo(act.slice(5)); return; }
+  if (GS.auto && !['close', 'focus', 'follow', 'view', 'over', 'chf', 'watch', 'selcity', 'dip'].includes(cmd)) return;
   switch (cmd) {
     case 'follow': { const t = UI.selEnemy; if (t) { setFollow(true); DIR.tgt = { kind: 'army', ref: t }; DIR.hold = 1e9; } break; }
     case 'view': UI.viewF = +arg; updateHUD(); break;
     case 'close': clearSel(); break;
+    case 'over': clearSel(true); UI.selOver = arg; updateHUD(); break;
+    case 'chf': UI.chronF = arg; break;
+    case 'watch': { const a = GS.armies.find((x) => x.id === +arg && !x.dead); if (a) { clearSel(true); UI.selEnemy = a; focusOn(a); } break; }
+    case 'selcity': { const s = MAP.cities[+arg]; if (s) { clearSel(true); UI.selCity = s; if (UI.selProv !== s.prov) { UI.selProv = s.prov; updateTerrainColors(); } focusOn(s); } break; }
+    case 'dip': if (GS.auto) UI.selOver = 'wars'; else { clearSel(true); UI.selDip = +arg; UI.dipMsg = ''; } break;
     case 'recruit': if (c && recruit(F, c, arg)) Sfx.click(); else { Sfx.deny(); flashHint(c && c.queue.length >= 5 ? 'Recruitment queue is full.' : 'Not enough resources.'); } break;
     case 'walls': if (c && fortify(F, c)) Sfx.thunk(); else { Sfx.deny(); flashHint('Not enough resources.'); } break;
     case 'peace': { if (suePeace(+arg)) Sfx.horn(); else Sfx.deny(); updateHUD(); break; }
@@ -51,7 +59,7 @@ export function doAct(act) {
   renderPanel(true);
 }
 export function headerHtml(color, title, sub) {
-  return `<div class="ph" style="--fc:${color}"><h2>${title}</h2><div class="sub">${sub}</div><button class="x" data-act="close" aria-label="Close">✕</button></div>`;
+  return `<div class="ph" style="--fc:${color}"><button class="grip" data-sheet aria-label="Show more or less"></button><h2>${title}</h2><div class="sub">${sub}</div><button class="x" data-act="close" aria-label="Close">✕</button></div>`;
 }
 export function yieldChips(y) { return RES.filter((r) => y[r] > 0.05).map((r) => `<span class="chip">${IC[r]}<b>+${y[r].toFixed(1)}</b>/s</span>`).join(''); }
 export function wallsDots(n) { return '▮'.repeat(n) + '<span style="opacity:.3">' + '▮'.repeat(3 - n) + '</span>'; }
@@ -107,10 +115,10 @@ export function cityPanel(c) {
   h += `<div class="kv"><span class="chip">${IC.men}militia <b>${known ? fmtInt(c.militia) : '?'}</b>/${known ? fmtInt(c.militiaMax) : '?'}</span><span class="chip">${IC.walls}walls <b style="letter-spacing:-1px">${wallsDots(c.walls)}</b></span>${besieged && known ? '<span class="chip" style="background:#8a2018">Under attack</span>' : ''}</div>`;
   const k = 0.8 * c.loyal, sc = (y) => Object.fromEntries(RES.map((r) => [r, y[r] * k]));
   if (c.loyal < 0.99) h += `<div class="note">Recently conquered: the people are restless, income at <b>${Math.round(c.loyal * 100)}%</b> (recovers over time).</div>`;
-  h += `<div class="sect">City income</div><div class="kv">${yieldChips(sc(cityYield(c, c.owner)))}</div>`;
   if (c.owner >= 0) {
     const secure = provSecure(P), pct = Math.round(SET_W(c) / provW(P) * 100);
-    h += `<div class="sect">Share of ${P.name}'s land · ${pct}%${secure ? ' · province secure +12%' : ''}</div><div class="kv">${yieldChips(sc(landShare(c)))}</div>`;
+    const cy = sc(cityYield(c, c.owner)), ly = sc(landShare(c)), tot = Object.fromEntries(RES.map((r) => [r, cy[r] + ly[r]]));
+    h += `<div class="sect" title="The city's own income, plus its share of the province's land">Income · the city and ${pct}% of ${P.name}'s land${secure ? ', secure +12%' : ''}</div><div class="kv">${yieldChips(tot)}</div>`;
     const pl = plunderer(c.prov, c.owner);
     if (pl) h += `<div class="note">${ownerName(pl.owner)} troops are plundering ${P.name}: land income <b>−${Math.round((1 - PLUNDER) * 100)}%</b>. Drive them off, or guard the countryside with a fort.</div>`;
     const st = GS.factions[c.owner].stretch;
@@ -172,7 +180,7 @@ export function armyStatus(a) {
   if (a.state === 'rout') return 'Routing!';
   if (a.state === 'move') {
     const T = a.target;
-    if (T && T.kind === 'army') return `Hunting a ${ownerName(T.ref.owner)} army`;
+    if (T && T.kind === 'army') return `Hunting ${T.ref.owner >= 0 ? 'a ' + FACTIONS[T.ref.owner].adj : 'an enemy'} army`;
     if (T && T.kind === 'city') return (T.ref.owner === a.owner ? 'Marching to ' : 'Marching on ') + T.ref.name;
     if (T && T.kind === 'fort') return 'Marching on a fort';
     if (T && T.kind === 'merge') return 'Joining another army';
@@ -270,6 +278,7 @@ export function renderPanel(force) {
   if (UI.selFort && UI.selFort.dead) UI.selFort = null;
   if (UI.sel.length) h = myArmyPanel(UI.sel);
   else if (UI.selDip != null && !GS.auto) h = dipPanel(UI.selDip);
+  else if (UI.selOver) h = overviewPanel(UI.selOver);
   else if (UI.selEnemy) h = enemyArmyPanel(UI.selEnemy);
   else if (UI.selCity) h = cityPanel(UI.selCity);
   else if (UI.selFort) h = fortPanel(UI.selFort);
@@ -291,5 +300,16 @@ export function initPanel() {
   $panel.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     doAct(b.dataset.act);
+  });
+  // phones: the panel is a bottom sheet. Tap its grip to show more or less, swipe it up to open it fully, down to shrink or close it.
+  let gripY = null;
+  $panel.addEventListener('pointerdown', (e) => { gripY = e.target.closest('[data-sheet]') ? e.clientY : null; });
+  $panel.addEventListener('pointerup', (e) => {
+    if (gripY == null || !phoneLayout()) return;
+    const dy = e.clientY - gripY; gripY = null;
+    const full = $panel.classList.contains('full');
+    if (dy > 40 && !full) { clearSel(); renderPanel(true); }
+    else $panel.classList.toggle('full', dy < -40 ? true : dy > 40 ? false : !full);
+    Sfx.click();
   });
 }

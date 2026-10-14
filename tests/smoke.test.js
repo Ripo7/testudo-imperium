@@ -21,19 +21,29 @@ export default async function smoke() {
         for (const F of T.GS.factions) if (F.id !== 0) { T.dipPanel(F.id); panels++; }
         for (const a of T.GS.armies) { if (a.owner === 0) T.myArmyPanel([a]); else T.enemyArmyPanel(a); panels++; }
         for (const B of T.GS.battles) { T.battlePanel(B); panels++; }
+        for (const tab of ['empire', 'wars', 'chron']) { T.UI.chronF = 'all'; if (T.overviewPanel(tab).length > 200) panels++; }
+        for (const f of ['war', 'bat', 'city']) { T.UI.chronF = f; T.overviewPanel('chron'); }
+        const alerts = T.GS.factions.map((F) => T.computeAlerts(F.id).length);
+        const record = { events: T.GS.chron.length, battles: T.GS.chron.filter((e) => e.k === 'bat').length, samples: T.GS.hist.length, raised: T.GS.fstats.reduce((m, s) => m + s.raised, 0) };
         T.updateHUD(); T.renderPanel(true);
         // fog of war (on by default when playing Rome): some enemies hidden, unseen cities' defenders unknown
         T.updateSight(); T.SIGHT.on = T.fogShown();
         const enemies = T.GS.armies.filter((a) => !a.dead && a.owner !== 0), hidden = enemies.filter((a) => !T.seesArmy(a)).length;
         const unseen = T.MAP.cities.find((c) => c.owner !== 0 && !T.seesCity(c));
         const fog = { on: T.SIGHT.on, enemies: enemies.length, hidden, unknownCity: !!unseen && T.cityPanel(unseen).includes('Out of sight') };
-        return { time: Math.round(T.GS.time), over: T.GS.over, fog, panels, wars: Object.values(T.GS.rel).filter((R) => R.war).length, battles: T.GS.battles.length };
+        return { time: Math.round(T.GS.time), over: T.GS.over, fog, panels, alerts, record, wars: Object.values(T.GS.rel).filter((R) => R.war).length, battles: T.GS.battles.length };
       }`);
       console.log(`  ${label}:`, r);
       check(r.time >= 390 || !!r.over, `[${label}] campaign simulated (${r.time}s)`);
       check(r.panels > 60, `[${label}] every panel renders (${r.panels})`);
       check(r.fog.on && r.fog.hidden > 0 && r.fog.unknownCity, `[${label}] fog of war hides ${r.fog.hidden} of ${r.fog.enemies} enemy armies and unseen defenders`);
+      check(r.record.battles > 5 && r.record.samples >= Math.floor(r.time / 10) && r.record.raised > 0, `[${label}] the war is recorded (${r.record.events} events, ${r.record.samples} samples)`);
       await page.waitForTimeout(800);   // a few real frames with the renderer on
+      // the end of the war: the report with its charts, ledger, wars and key moments
+      await page.evaluate(() => { const T = window.__T; T.setNoRender(true); if (!T.GS.over) T.endCampaign(true); });   // the renderer off: software WebGL frames are slow
+      await page.waitForFunction(() => !document.getElementById('over').classList.contains('hidden'), null, { timeout: 60000, polling: 250 });
+      const rep = await page.evaluate(() => { const R = document.getElementById('report'); return { charts: R.querySelectorAll('svg.ch').length, lines: R.querySelectorAll('svg.ch .ln').length, ledger: R.querySelectorAll('.rep-ledger tbody tr').length, moments: R.querySelectorAll('.rep-moments .ce').length, width: R.scrollWidth <= R.clientWidth + 1 }; });
+      check(rep.charts === 2 && rep.lines >= 6 && rep.ledger > 10 && rep.moments > 3 && rep.width, `[${label}] end-of-war report: ${rep.charts} charts, ${rep.ledger} ledger rows, ${rep.moments} key moments, fits the screen`);
       check(!errors.length, `[${label}] no script errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);
       await ctx.close();
     }

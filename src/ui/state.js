@@ -26,6 +26,7 @@ export const UI = { viewF: PLAYER, mode: 'title', sel: [], selCity: null, selFor
 export const $panel = $('panel'), $popup = $('popup'), $tip = $('tip'), $log = $('log'), $hint = $('hintbar');
 
 export function clearSel(keepProv) {
+  UI.selOver = null; $panel.classList.remove('full');
   UI.selDip = null; UI.sel = []; UI.selCity = null; UI.selFort = null; UI.selBattle = null; UI.selEnemy = null;
   if (!keepProv && UI.selProv != null) { UI.selProv = null; updateTerrainColors(); }
   hidePopup();
