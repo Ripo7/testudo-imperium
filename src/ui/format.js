@@ -35,6 +35,8 @@ export const oddsWord = (p) => (p >= 0.8 ? ['Decisive', 'good'] : p >= 0.6 ? ['F
 // for colour-blind readers too (checked with the dataviz palette validator, all pairs)
 export const FCHART = ['#c6404a', '#a966b8', '#1e8fee', '#af8433'];
 export const clock = (t) => { const s = Math.max(0, Math.floor(t)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+// a march time, rounded as a commander would say it: "25 s", "1:40"
+export const etaShort = (t) => (t < 57.5 ? Math.max(5, Math.round(t / 5) * 5) + ' s' : clock(Math.round(t / 5) * 5));
 // small one-colour glyphs for dispatches and the chronicle (they take the text colour)
 const g = (d, fill = true) => `<svg viewBox="0 0 24 24" aria-hidden="true"${fill ? ' fill="currentColor"' : ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'}>${d}</svg>`;
 export const GLYPH = {

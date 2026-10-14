@@ -49,7 +49,16 @@
     <div id="envoy" class="hidden"></div>
     <div id="overbar" class="hidden"><span>The war is over.</span><button class="abtn primary" id="reportBtn">See the report</button></div>
     <div id="panel"></div>
-    <div id="popup" class="hidden"></div>
+    <!-- phones: the commands within reach of a thumb (the top bar keeps only the treasury and the menu) -->
+    <nav id="dock" aria-label="Commands">
+      <button id="dkArmies" data-dock="armies" title="Next army (N)"><svg viewBox="0 0 24 24"><path d="M5 2.5h2V22H5z"/><path d="M7 3.5h12.5l-2.6 4 2.6 4H7z"/><circle cx="6" cy="2.6" r="1.9"/></svg><span>Armies</span><b class="badge hidden" id="dkIdle"></b></button>
+      <button id="dkFollow" data-dock="follow" class="hidden" title="Camera follows the action (F)"><svg viewBox="0 0 24 24"><path d="M3 7h12a2 2 0 0 1 2 2v1.6l4-2.6v8l-4-2.6V15a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/></svg><span>Follow</span></button>
+      <button id="dkPause" data-dock="pause"><svg viewBox="0 0 24 24" id="dkPauseIco"></svg><span>Pause</span></button>
+      <button id="dkSpeed" data-dock="speed" aria-label="Game speed"><b id="dkSpd">1×</b><span id="dkClock">0:00</span></button>
+      <button id="dkOver" data-dock="over" title="Overview: empire, wars and chronicle"><svg viewBox="0 0 24 24"><path d="M6 3h11a2.5 2.5 0 0 1 2.5 2.5V6H16v12.5A2.5 2.5 0 0 1 13.5 21H5.5A2.5 2.5 0 0 1 3 18.5V17h3z" fill-opacity=".55"/><path d="M6 3a2.5 2.5 0 0 1 2.5 2.5V17H16V5.5A2.5 2.5 0 0 0 13.5 3zM10 7.5h4v1.6h-4zM10 11h4v1.6h-4z"/></svg><span>Overview</span></button>
+      <button id="dkMap" data-dock="map" title="Political map"><svg viewBox="0 0 24 24"><path d="M3 5.5 9 3v15.5L3 21z"/><path d="M9 3l6 2.5V21l-6-2.5z" fill-opacity=".55"/><path d="M15 5.5 21 3v15.5L15 21z"/></svg><span>Political</span></button>
+      <button id="dkView" data-dock="view"><svg viewBox="0 0 24 24" id="dkViewIco"></svg><span id="dkViewTxt">Hide</span><b class="badge hidden" id="dkBadge"></b></button>
+    </nav>
     <div id="tip" class="hidden"></div>
   </div>
 
@@ -73,7 +82,7 @@
         <div><h3>Battles</h3><p>Fought automatically but decided by you: terrain, rivers, walls, flanks, stance and the odds you accept.</p></div>
       </div>
       <div class="note2 desk-only">Click to select, right-click to march or attack. Drag to pan, scroll to zoom, Space to pause, 1–4 for speed, P for the political map.</div>
-      <div class="note2 touch-only">Tap to select, tap a place to march or an enemy to attack. Drag to pan, pinch to zoom.</div>
+      <div class="note2 touch-only">Tap your army, then a place or an enemy: the route and the odds show first, tap again to go. Hold an army to add it to the selection. Drag to pan, pinch to zoom.</div>
     </div>
   </div>
 
@@ -82,6 +91,7 @@
       <h2 class="title" style="font-size:clamp(38px,10vw,58px)">Paused</h2>
       <p class="tag">The Senate awaits your orders.</p>
       <button class="big-btn" id="resumeBtn">Resume</button>
+      <div class="menu-row"><button class="ghost-btn" id="menuHelp">How to rule</button><button class="ghost-btn" id="menuMute">Sound: on</button></div>
       <div class="show-opts" id="showOpts"></div>
       <button class="ghost-btn" id="autoToggle">Hand over to the AI</button><br>
       <button class="ghost-btn" id="newBtn">Start a new campaign</button><br>
@@ -99,12 +109,12 @@
       <p>Wars are fought for provinces: a power goes to war more readily against a rival that holds part of a province it means to finish, and makes peace less readily with it. A power close to victory won't make peace with anyone behind it, nor will the one ahead when only two powers are left.</p>
       <h4>Keeping track</h4>
       <ul>
-        <li><b>Dispatches</b> (top left) list what needs your attention right now: a city under assault, an enemy army closing on one of your cities, a plundered province, food or gold about to run out, a city that may revolt, a rival close to victory, a treaty about to end. Each one lasts as long as its cause. Click it to go there.</li>
+        <li><b>Dispatches</b> (top left; on a phone, a row under the top bar) list what needs your attention right now: a city under assault, an enemy army closing on one of your cities, a plundered province, food or gold about to run out, a city that may revolt, a rival close to victory, a treaty about to end. Each one lasts as long as its cause. Click it to go there.</li>
         <li>The <b>standings</b> show the provinces each power holds whole, with their change over the last minute (▲▼), a bar towards victory and its men under arms. Below them, every war and treaty, with how long it has lasted or has left.</li>
         <li><b>Overview</b> (O): your treasury and every army and city at a glance (Empire), who fights whom with war scores and weariness (Wars), and the <b>chronicle</b> of the war: wars, treaties, battles, cities taken, revolts. Under the fog it only tells what your scouts saw, and what everyone knows.</li>
-        <li>The <b>eye</b> in the top bar (V) hides the standings, dispatches, messages and hints at once, to clear the map. While they are hidden, a red number on the eye counts the urgent dispatches. The pause menu can switch each of them off for good.</li>
+        <li>The <b>eye</b> (V; <b>Hide</b> at the bottom of a phone's screen) hides the standings, dispatches, messages and hints at once, to clear the map. While they are hidden, a red number on it counts the urgent dispatches. The pause menu can switch each of them off for good.</li>
         <li>When the war ends, a <b>report</b> tells how it went: provinces, armies and income over time, every power's numbers, its economy (what it earned, and spent on pay, food, recruits and buildings), each war and its outcome, and the key moments.</li>
-        <li class="touch-only">On a phone the panel opens over the bottom third of the screen: pull its handle up to see all of it, down to close it.</li>
+        <li class="touch-only">On a phone the commands sit in a bar at the bottom of the screen: <b>Armies</b> jumps to your next army (those waiting for orders first, a gold number counts them), then pause, speed (tap to step through 1× to 8×), Overview, the political map and Hide. Sound and this help are in the menu (☰). The panel opens above the bar: pull its handle up to see all of it, down to close it; held sideways, the phone shows it on the left.</li>
       </ul>
       <h4>Marching</h4>
       <ul>
@@ -157,8 +167,13 @@
       <h4>Reading the map</h4>
       <p>Each power's land is tinted in its colour, with a stronger glow along its borders; free land is greyed out. A disputed province is hatched, each part tinted for whoever holds the nearest place, and its name is underlined with dashes. Zoom out and the colours get stronger, or switch to the <b>Political</b> map (P) for flat colours.</p>
       <h4>Controls</h4>
-      <p class="desk-only">Left-click select (Shift adds armies) · Right-click: march / attack / merge / station · Drag to pan · Wheel zoom · WASD pan · Space pause · 1–4 speed · P political map · O overview · V map view (hide the panels) · F follow camera (autoplay) · H back home · Esc cancel</p>
-      <p class="touch-only">Tap to select · With an army selected, tap the map to march or a target for options · Drag to pan · Pinch to zoom</p>
+      <p class="desk-only">Left-click select (Shift-click adds or removes an army) · Right-click: march / attack / merge / station · N next army (Shift+N the one before) · G every army · Drag to pan · Wheel zoom · WASD pan · Space pause · 1–4 speed · P political map · O overview · V map view (hide the panels) · F follow camera (autoplay) · H back home · Esc cancel</p>
+      <ul class="touch-only">
+        <li><b>Tap</b> your army to select it; ‹ › in its panel, or <b>Armies</b> in the bottom bar, step through your armies.</li>
+        <li>With an army selected, <b>tap the map</b> or a target: a standard shows where it would go, with the route, the march time and, for an enemy, the odds. <b>Tap it again</b>, or the button in the panel, to give the order; tap elsewhere to move the standard, ✕ to drop it.</li>
+        <li><b>Hold</b> another of your armies to add it to the selection (hold it again to take it out); <b>hold</b> anything else to inspect it.</li>
+        <li>Drag to pan, pinch to zoom.</li>
+      </ul>
       <div style="text-align:center;margin-top:16px"><button class="big-btn" id="helpClose">Back to the map</button></div>
     </div>
   </div>

@@ -12,8 +12,8 @@ import { FACTIONS } from '../game/data.js';
 import { fortSpotOk } from '../game/economy.js';
 import { fmtInt, oddsWord } from './format.js';
 import {
-  $tip, attackPreview, clearSel, hitTest, issueOrder, ME, myOrderables, placeFortAt, selectThing, stopPlacing,
-  tapAt, UI,
+  $tip, attackPreview, cancelOrder, clearSel, cycleArmy, hitTest, issueOrder, longPressAt, ME, myOrderables, placeFortAt,
+  selectAllArmies, selectThing, stopPlacing, tapAt, UI,
 } from './state.js';
 import { renderPanel } from './panel.js';
 import { focusOn, setSpeed, toggleMapView, toggleOverview } from './hud.js';
@@ -38,23 +38,30 @@ export function grabPan(g0, sx, sy) {
   clampCam(); applyCamera();
 }
 export const playing = () => UI.mode === 'play';
+export const LONG_PRESS = 480;   // ms a finger rests on the map before it counts as a long press
+export const stopLong = (p) => { if (p && p.lt) { clearTimeout(p.lt); p.lt = 0; } };
 canvas.addEventListener('pointerdown', (e) => {
   if (!playing()) return;
   Sfx.init();
   try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
-  const p = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, type: e.pointerType, moved: false, button: e.button };
+  const p = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, type: e.pointerType, moved: false, button: e.button, long: false, lt: 0 };
   ptrs.set(e.pointerId, p);
   if (ptrs.size === 2) {
+    for (const q of ptrs.values()) stopLong(q);
     const [a, b] = [...ptrs.values()];
     gesture = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), z0: CAM.td, g0: groundPlane((a.x + b.x) / 2, (a.y + b.y) / 2) };
-  } else if (ptrs.size === 1) gesture = { type: 'pan', g0: groundPlane(p.x, p.y), button: e.button };
+  } else if (ptrs.size === 1) {
+    gesture = { type: 'pan', g0: groundPlane(p.x, p.y), button: e.button };
+    // touch: a finger held still selects or inspects instead of tapping (see longPressAt)
+    if (p.type !== 'mouse') p.lt = setTimeout(() => { p.lt = 0; if (!p.moved && ptrs.get(e.pointerId) === p && playing()) p.long = longPressAt(p.x, p.y); }, LONG_PRESS);
+  }
   if (ptrs.size === 2) manualCam();
 });
 canvas.addEventListener('pointermove', (e) => {
   const p = ptrs.get(e.pointerId);
   if (!p) { if (e.pointerType === 'mouse' && playing()) hover(e.clientX, e.clientY); return; }
   p.x = e.clientX; p.y = e.clientY;
-  if (Math.hypot(p.x - p.x0, p.y - p.y0) > (p.type === 'mouse' ? 5 : 10)) p.moved = true;
+  if (Math.hypot(p.x - p.x0, p.y - p.y0) > (p.type === 'mouse' ? 5 : 10)) { p.moved = true; stopLong(p); }
   if (!gesture) return;
   if (gesture.type === 'pinch' && ptrs.size >= 2) {
     const [a, b] = [...ptrs.values()];
@@ -66,12 +73,13 @@ canvas.addEventListener('pointermove', (e) => {
 export function endPointer(e) {
   const p = ptrs.get(e.pointerId);
   ptrs.delete(e.pointerId);
+  stopLong(p);
   if (!p || !gesture) { if (!ptrs.size) gesture = null; return; }
   const ok = e.type === 'pointerup' && playing();
   if (gesture.type === 'pinch' || gesture.type === 'pinchEnd') { gesture = ptrs.size ? { type: 'pinchEnd' } : null; return; }
   if (gesture.type === 'pan') {
     gesture = null;
-    if (!ok || p.moved) return;
+    if (!ok || p.moved || p.long) return;
     if (p.type !== 'mouse') { tapAt(p.x, p.y); return; }
     if (p.button === 0) {
       if (UI.placing) { placeFortAt(pickCell(p.x, p.y)); return; }
@@ -147,7 +155,9 @@ window.addEventListener('keydown', (e) => {
     case 'KeyO': toggleOverview(); break;
     case 'KeyV': toggleMapView(); break;
     case 'KeyF': if (GS.auto) setFollow(!DIR.on); break;
-    case 'Escape': if (UI.placing) stopPlacing(); else if (UI.sel.length || UI.selCity || UI.selEnemy || UI.selFort || UI.selBattle || UI.selOver || UI.selDip != null || UI.selProv != null) { clearSel(); renderPanel(true); } else openMenu(); break;
+    case 'KeyN': cycleArmy(e.shiftKey ? -1 : 1); break;
+    case 'KeyG': selectAllArmies(); break;
+    case 'Escape': if (UI.placing) stopPlacing(); else if (UI.order) { cancelOrder(); renderPanel(true); } else if (UI.sel.length || UI.selCity || UI.selEnemy || UI.selFort || UI.selBattle || UI.selOver || UI.selDip != null || UI.selProv != null) { clearSel(); renderPanel(true); } else openMenu(); break;
     case 'KeyH': { const who = GS.auto ? UI.viewF : ME; const cap = MAP.cities.find((c) => c.capital && c.owner === who) || MAP.cities.find((c) => c.owner === who && c.major); if (cap) { manualCam(); focusOn(cap); } break; }
     case 'KeyM': Sfx.init(); Sfx.toggle(); setMuteIcon(); break;
   }

@@ -11,7 +11,8 @@ Real-time strategy in the browser. Play Rome, Carthage, the Gauls or Egypt on a 
 - **Battles decided by strategy**: terrain, rivers, walls, flanks, stance and the odds you accept. Retreat when a battle turns.
 - **An economy of land and cities**: provinces share their land income between settlements, cities take improvements (farmlands, forum, barracks, temple), soldiers draw pay, and conquered cities can revolt.
 - **War and peace**: powers stay at peace until one declares war. Wars wear both sides down until they sign a treaty, with tribute paid by the loser.
-- **Know what's going on**: dispatches flag what needs attention now (cities under assault, enemy armies closing in, plunder, famine, unrest, a rival nearing victory), the Overview shows your treasury, armies, cities and wars, and the chronicle records the whole war. When it ends, a report charts how it went, economy included. On a phone, the eye in the top bar clears every panel off the map.
+- **Know what's going on**: dispatches flag what needs attention now (cities under assault, enemy armies closing in, plunder, famine, unrest, a rival nearing victory), the Overview shows your treasury, armies, cities and wars, and the chronicle records the whole war. When it ends, a report charts how it went, economy included.
+- **Made for phones too**: one slim strip of treasury on top, the commands in a dock under the thumb (next army, pause, speed, Overview, political map, hide the panels), and orders in two taps: the first plants a standard showing the route, the march time and the odds, the second gives the order, so a stray tap never sends an army off. Hold an army to add it to the selection. Held sideways, the panel opens beside the map.
 - **Autoplay** to watch four AI empires fight it out through the eyes of the power you follow, and take command of it at any moment. Three difficulty levels, and saves that survive closing the tab.
 
 ![The end-of-war report](docs/screenshot-report.jpg)
@@ -76,6 +77,7 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 
 - **map**: map generation is deterministic and every province has its cities (plain Node).
 - **smoke**: a campaign plays on desktop and phone sizes, every panel (Overview tabs included) renders, the fog hides what it should, the war is recorded and the end-of-war report renders, no console errors.
+- **controls**: on a phone, the dock steps through the armies, pauses and changes speed; a tap plans a march and a second tap gives it; a tap on an enemy town shows the odds; a long press adds an army to the selection; the layout held upright and sideways. On a desktop, the keys that step through the armies.
 - **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
 - **determinism**: the same seed gives exactly the same game, whatever sounds and effects do with their own random numbers, and a war saved and loaded goes on exactly as if it had never stopped.
 - **save & resume**: play, close the tab, reopen, and check the restored game matches the save exactly.

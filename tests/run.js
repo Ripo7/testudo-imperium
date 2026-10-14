@@ -5,8 +5,9 @@ import smoke from './smoke.test.js';
 import powers from './powers.test.js';
 import determinism from './determinism.test.js';
 import saveResume from './save-resume.test.js';
+import controls from './controls.test.js';
 
-const suites = { map, smoke, powers, determinism, 'save & resume': saveResume };
+const suites = { map, smoke, controls, powers, determinism, 'save & resume': saveResume };
 const only = process.argv[2];
 for (const [name, fn] of Object.entries(suites)) {
   if (only && !name.startsWith(only)) continue;

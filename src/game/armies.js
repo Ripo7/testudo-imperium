@@ -27,9 +27,11 @@ export function nearestCity(x, y, pred) {
   return best;
 }
 // cells per second, from the army's make-up and the ground under it (MAP.move, see map/generate.js)
-export function armySpeed(a) {
+export function armySpeed(a) { return speedAt(a, cellOf(a.x, a.y), a.x, a.y); }
+// the same, for army a standing on cell i at (x, y)
+export function speedAt(a, i, x, y) {
   const c = a.comp, men = menOf(c);
-  const i = cellOf(a.x, a.y), mc = MAP.move[i], onRoad = MAP.road[i] === 1;
+  const mc = MAP.move[i], onRoad = MAP.road[i] === 1;
   const open = OPEN_GROUND.has(MAP.biome[i]);
   let s = BASE_SPEED;
   const SG = sigOf(a.owner);
@@ -39,8 +41,19 @@ export function armySpeed(a) {
   if (a.stance === 'def') s *= 0.85;
   if (a.state === 'rout') s *= 1.15;
   s /= Math.min(mc < Infinity ? mc : 3, 6);
-  for (const f of GS.forts) if (f.owner !== a.owner && f.built >= 1 && Math.hypot(f.x - a.x, f.y - a.y) < 3.2) { s *= 0.45; break; }
+  for (const f of GS.forts) if (f.owner !== a.owner && f.built >= 1 && Math.hypot(f.x - x, f.y - y) < 3.2) { s *= 0.45; break; }
   return s;
+}
+// about how many seconds army a needs to march along path (cell indices) from step pi on
+export function pathTime(a, path, pi = 0) {
+  if (!path) return 0;
+  let t = 0, px = a.x, py = a.y;
+  for (let k = pi; k < path.length; k++) {
+    const i = path[k], x = i % MAP.W, y = (i / MAP.W) | 0;
+    t += Math.hypot(x - px, y - py) / Math.max(0.05, speedAt(a, i, x, y));
+    px = x; py = y;
+  }
+  return t;
 }
 // what the ground at (x, y) means for a marching army, in words
 export function groundInfo(x, y) {
