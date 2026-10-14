@@ -1,7 +1,7 @@
 import { SIGHT_EVERY, updateSight } from './sight.js';
 import { dipTick } from './diplomacy.js';
 import { STAND, updateStanding } from './standing.js';
-import { GS, MAP } from './state.js';
+import { GS, MAP, rnd } from './state.js';
 import { diffOf, PLAYER } from './data.js';
 import { updateArmy } from './armies.js';
 import { detectContacts, updateBattles } from './battles.js';
@@ -24,7 +24,7 @@ export function simStep(dt) {
   for (const F of GS.factions) {
     if (F.isPlayer || !F.alive) continue;
     F.aiT -= dt;
-    if (F.aiT <= 0) { F.aiT = diffOf().tick - 0.3 + Math.random() * 0.6; aiTick(F); }
+    if (F.aiT <= 0) { F.aiT = diffOf().tick - 0.3 + rnd() * 0.6; aiTick(F); }
   }
   historyTick();
   GS.checkT -= dt;

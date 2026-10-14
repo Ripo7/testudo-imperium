@@ -76,7 +76,7 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 - **map**: map generation is deterministic and every province has its cities (plain Node).
 - **smoke**: a campaign plays on desktop and phone sizes, every panel (Overview tabs included) renders, the fog hides what it should, the war is recorded and the end-of-war report renders, no console errors.
 - **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
-- **determinism**: the same seed and the same random numbers give exactly the same game.
+- **determinism**: the same seed gives exactly the same game, whatever sounds and effects do with their own random numbers, and a war saved and loaded goes on exactly as if it had never stopped.
 - **save & resume**: play, close the tab, reopen, and check the restored game matches the save exactly.
 
 GitHub Actions runs the same suite on every push and pull request (`.github/workflows/ci.yml`).
@@ -100,7 +100,6 @@ The game is a static site, so any static host works too (Netlify, Cloudflare Pag
 
 ## Known issues
 
-- Sound effects draw from `Math.random`, the same generator the AI uses, so a game only replays identically with sound off (the determinism test mutes it). Giving the simulation its own seeded generator would fix that and allow replays.
 - The AI almost never attacks from two sides, so flanking is mostly a player tactic.
 
 ## Credits and licence

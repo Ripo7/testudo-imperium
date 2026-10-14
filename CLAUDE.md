@@ -24,7 +24,7 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 
 ## Behaviour to preserve
 
-- Determinism: with a seeded `Math.random` (and sounds muted), the same seed gives the same game. Don't add wall-clock time or unseeded randomness to the simulation.
+- Determinism: the same map seed gives the same game. The simulation draws only from its own generator, `rnd()` and `rndIn()` in `game/state.js` (its state is `GS.rng`, saved with the game). Never use `Math.random` or the wall clock in `src/game/`; effects and sounds keep `Math.random`. Anything the simulation keeps between steps must go into the save, or the determinism test's save-and-load check fails.
 - Saves (`src/game/save.js`) must keep loading older saves. Add new fields with defaults on restore rather than breaking the format (as `fillStats`, `chron` and `hist` do).
 - Report charts use `FCHART` (in `ui/format.js`), steps of each power's colour checked for colour-blind separation on the dark tablet. Re-check with a palette validator if you change them.
 - After a gameplay change, run `npm test`. For balance changes, also run `npm run balance` and `npm run audit`, and update the help screen in `index.html` when a rule changes.

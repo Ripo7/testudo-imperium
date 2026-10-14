@@ -1,5 +1,5 @@
 import { SET_W } from './standing.js';
-import { GS, MAP, menOf, ownerName } from './state.js';
+import { GS, MAP, menOf, ownerName, rnd } from './state.js';
 import { $ } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { FACTIONS, GANG_AT, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PEACE_WILL, PLAYER, pName, REVOLT_RATE, TREATY_TIME, TRIBUTE_FLOOR } from './data.js';
@@ -130,7 +130,7 @@ export function aiConsiderWar(F) {
     const sc = val * Math.min(r, 2) * (vsLeader ? 1.8 : 1) * (G.isPlayer ? 1 + 0.2 * F.aggr : 1);
     if (sc > bs) { bs = sc; best = G; }
   }
-  if (best && Math.random() < (0.12 + 0.3 * F.aggr) * (roomToGrow ? 0.35 : 1) * (wars ? 0.5 : 1)) declareWar(F.id, best.id);
+  if (best && rnd() < (0.12 + 0.3 * F.aggr) * (roomToGrow ? 0.35 : 1) * (wars ? 0.5 : 1)) declareWar(F.id, best.id);
 }
 export function dipTick() {
   // every war wears both sides down: time, hunger and other fronts
@@ -145,7 +145,7 @@ export function dipTick() {
   if (UI.envoy && (GS.time > UI.envoy.until || !atWar(PLAYER, UI.envoy.g) || GS.auto)) { if (GS.time > UI.envoy.until) relOf(PLAYER, UI.envoy.g).nd[PLAYER] = GS.time + 60; hideEnvoy(); }
   if (GS.time < PEACE_TIME) return;
   const ai = GS.factions.filter((F) => F.alive && !F.isPlayer);
-  for (const F of ai) { F.dipT = (F.dipT == null ? Math.random() * 10 : F.dipT) - 1; if (F.dipT <= 0) { F.dipT = 8 + Math.random() * 6; aiConsiderWar(F); } }
+  for (const F of ai) { F.dipT = (F.dipT == null ? rnd() * 10 : F.dipT) - 1; if (F.dipT <= 0) { F.dipT = 8 + rnd() * 6; aiConsiderWar(F); } }
   GS.peaceT = (GS.peaceT || 0) - 1;
   if (GS.peaceT > 0) return;
   GS.peaceT = 6;
@@ -179,7 +179,7 @@ export function revolts() {
     if (c.owner < 0 || c.capital || c.loyal >= 0.5 || hasImp(c, 'temple') || (c.battle && !c.battle.done)) continue;
     const F = GS.factions[c.owner];
     if (GS.armies.some((a) => !a.dead && a.owner === c.owner && Math.abs(a.x - c.x) < 3 && Math.abs(a.y - c.y) < 3)) continue;
-    if (Math.random() < revoltRisk(c, F)) { captureCity(c, NEUTRAL); c.militia = c.militiaMax * 0.6; c.loyal = 1; }
+    if (rnd() < revoltRisk(c, F)) { captureCity(c, NEUTRAL); c.militia = c.militiaMax * 0.6; c.loyal = 1; }
   }
 }
 export function showEnvoy(g, gold) {

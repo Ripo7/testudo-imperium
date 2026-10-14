@@ -1,6 +1,5 @@
 import { updateStanding } from './standing.js';
-import { emptyComp, GS, MAP, setMap } from './state.js';
-import { rand } from '../core/util.js';
+import { emptyComp, GS, MAP, rndIn, seedRng, setMap } from './state.js';
 import { BIOME, generateMap, rng32 } from '../map/generate.js';
 import { FACTIONS, hasImp, NEUTRAL, PLAYER } from './data.js';
 import { makeArmy } from './armies.js';
@@ -38,11 +37,12 @@ export function computeCityYield(c) {
 export function initCampaign(seed) {
   setMap(generateMap(seed));
   Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, fog: false, diff: UI.diff == null ? 1 : UI.diff,
-    fstats: fillStats(), chron: [], hist: [], rivalF: -1 });
+    fstats: fillStats(), chron: [], hist: [], rivalF: -1, peaceT: 0, sightT: 0 });
+  seedRng(seed);
   GS.factions = FACTIONS.map((F, i) => ({
     id: i, ...F, res: { gold: 500, food: 500, wood: 400, stone: 300 },
     inc: { gold: 0, food: 0, wood: 0, stone: 0 }, upk: { gold: 0, food: 0, wood: 0, stone: 0 }, net: { gold: 0, food: 0, wood: 0, stone: 0 },
-    alive: true, isPlayer: i === PLAYER, pts: 0, share: 0, stretch: 1, starving: false, unpaid: false, aiT: 1 + rand(0, 1.8), eliminatedAt: 0, provoked: {}, oath: 0, noDealT: 0, intel: {},
+    alive: true, isPlayer: i === PLAYER, pts: 0, share: 0, stretch: 1, starving: false, unpaid: false, aiT: 1 + rndIn(0, 1.8), eliminatedAt: 0, provoked: {}, oath: 0, noDealT: 0, intel: {},
   }));
   GS.cityAt = new Int16Array(MAP.W * MAP.H).fill(-1);
   for (const c of MAP.cities) GS.cityAt[c.cell] = c.id;

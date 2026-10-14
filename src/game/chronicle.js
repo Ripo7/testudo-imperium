@@ -2,7 +2,6 @@ import { sees } from './sight.js';
 import { GS, MAP, menOf } from './state.js';
 import { FACTIONS, RES } from './data.js';
 import { nearestCity } from './armies.js';
-import { sideMen } from './battles.js';
 
 /* =========================================================
    The record of the war, read by the Overview panel and the end-of-war report:
@@ -51,7 +50,7 @@ export function recordCapture(c, prev, f) {
 // p where (f field, c city, t fort), c the city (or the nearest one), x/y the spot, v who saw it
 export function recordBattle(B) {
   const a = B.sides[0].faction, d = B.sides[1].faction;
-  const l = B.sides.map((S) => Math.max(0, Math.round(S.start - (S.left || 0) - sideMen(S))));
+  const l = B.lost;
   const place = B.kind === 'city' ? B.place : nearestCity(B.x, B.y);
   record({ k: 'bat', a, d, w: B.winner, l, p: B.kind === 'fort' ? 't' : B.kind === 'city' ? 'c' : 'f', c: place ? place.id : -1, x: Math.round(B.x), y: Math.round(B.y), v: seenMask(B.x, B.y, [a, d]) });
   const wf = B.sides[B.winner].faction, lf = B.sides[1 - B.winner].faction;

@@ -457,6 +457,8 @@ export function updateBattleFX(t, dt) {
     R.scale.set(s, 1, s);
     R.material.opacity = 0.35 + 0.2 * Math.sin(t * 4);
     if (paused || CAM.d > 120) continue;
+    // dust over the melee
+    if (Math.random() < dt * 3) { const w = cellToWorld(B.x, B.y); dust(w.x, Math.max(0, w.y), w.z, 2, 0.9, 1.4); }
     // archers loose volleys at the other side
     for (let i = 0; i < 2; i++) {
       const S = B.sides[i], O = B.sides[1 - i];

@@ -5,7 +5,6 @@ import { $, isTouch, store } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { CAM, projectCell } from '../render/camera.js';
 import { FACTIONS, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
-import { sideMen } from '../game/battles.js';
 import { clock, fcss, fmt, fmtInt, fmtRate, GLYPH, IC } from './format.js';
 import { _pp, $hint, $log, clearSel, ME, UI } from './state.js';
 import { renderPanel } from './panel.js';
@@ -22,8 +21,8 @@ import { updateTerrainColors } from '../render/terrain.js';
 export const $res = $('resbar');
 $res.innerHTML = RES.map((r) => `<div class="res" id="r_${r}" title="${r}">${IC[r]}<div><b>0</b><br><small>+0</small></div></div>`).join('');
 export const resEls = RES.map((r) => { const el = $('r_' + r); return { el, b: el.querySelector('b'), s: el.querySelector('small') }; });
-export let crestKey = '';
-export function resetCrest() { crestKey = ''; }
+export let crestKey = '', standKey = '';
+export function resetCrest() { crestKey = ''; standKey = ''; }
 export function relMark(Fx) {
   if (!Fx.alive) return '';
   if (GS.auto) { const n = warsOf(Fx.id); return n ? ` <small class="war" title="At war with ${n} power${n > 1 ? 's' : ''}">⚔${n > 1 ? n : ''}</small>` : ''; }
@@ -71,8 +70,9 @@ export function updateHUD() {
     const mine = GS.factions[ME].pts;
     h += `<div id="goal">Victory points: <b>${mine}/${need}</b><div class="gbar"><i style="width:${Math.min(100, mine / need * 100)}%"></i></div></div>`;
   }
-  const st = $('standRows');
-  if (st.innerHTML !== h) st.innerHTML = h;
+  // compared with what was last written, not with innerHTML: the browser writes some markup back differently (SVG),
+  // so that comparison never matched and the box was rebuilt four times a second, its tooltips with it
+  if (h !== standKey) { standKey = h; $('standRows').innerHTML = h; }
   renderAlerts(GS.auto ? UI.viewF : PLAYER);
   $('btnOver').classList.toggle('on', !!UI.selOver);
 }
@@ -206,7 +206,7 @@ export function bigHitSound() { const now = performance.now(); if (now < bigHitT
 export function onBattleEnd(B) {
   if (GS.auto) {
     const w = B.winner, l = 1 - w;
-    const wl = Math.max(0, B.startMen[w] - sideMen(B.sides[w])), ll = Math.max(0, B.startMen[l] - sideMen(B.sides[l]));
+    const wl = B.lost[w], ll = B.lost[l];
     const where = B.kind === 'city' ? ` at ${B.place.name}` : B.kind === 'fort' ? ' at a border fort' : '';
     if (wl + ll >= 500 && B.sides[w].faction >= 0) log(`<b style="color:${fcss(B.sides[w].faction)}">${ownerName(B.sides[w].faction)}</b> beat ${ownerName(B.sides[l].faction)}${where} · ${fmtInt(ll)} vs ${fmtInt(wl)} dead`, 'info', B);
     if (ll > 400 && ll > wl * 2 && onScreen(B.x, B.y)) bigHitSound();
@@ -216,8 +216,7 @@ export function onBattleEnd(B) {
   if (ps < 0) return;
   GS.stats.battles++;
   const won = B.winner === ps;
-  const ours = Math.max(0, B.startMen[ps] - sideMen(B.sides[ps]));
-  const theirs = Math.max(0, B.startMen[1 - ps] - sideMen(B.sides[1 - ps]));
+  const ours = B.lost[ps], theirs = B.lost[1 - ps];
   const where = B.kind === 'city' ? ` at ${B.place.name}` : '';
   if (won) {
     GS.stats.won++;

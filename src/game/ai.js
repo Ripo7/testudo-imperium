@@ -1,6 +1,6 @@
 import { cityEstimate, knowsArmy } from './sight.js';
 import { atPeace, atWar, warsOf } from './diplomacy.js';
-import { canAfford, dist, emptyComp, GS, MAP, menOf, provAt } from './state.js';
+import { canAfford, dist, emptyComp, GS, MAP, menOf, provAt, rnd } from './state.js';
 import { diffOf, fortCost, GANG_AT, hasImp, IMP_IDS, impCost, impSlots, NEUTRAL, sigOf, TYPES5, unitCost, wallCost } from './data.js';
 import { mergeArmies, nearestCity, orderTarget } from './armies.js';
 import { canRetreat, estimateOdds, powerOf, retreatArmy, retreatSide, sideComp, sideMen } from './battles.js';
@@ -77,7 +77,7 @@ export function aiTick(F) {
       if (ec.spear / em > 0.4) { if (good.includes('spear')) w.leg += 0.25; else w.arch += 0.15; }
       if (ec.leg / em > 0.35) { w.arch += 0.2; if (good.includes('leg')) w.leg += 0.15; }
     }
-    const roll = (list) => { let sw = list.reduce((s, t) => s + w[t], 0), r = Math.random() * sw; for (const t of list) { r -= w[t]; if (r <= 0) return t; } return list[0]; };
+    const roll = (list) => { let sw = list.reduce((s, t) => s + w[t], 0), r = rnd() * sw; for (const t of list) { r -= w[t]; if (r <= 0) return t; } return list[0]; };
     const urgent = armyMen < desired * 0.35 || mine.some((c) => (c.battle && !c.battle.done) || threatOf(c).some((h) => h.target && h.target.ref === c));
     // once it has decided on its elite unit, the power saves up for it (for up to 40 s) unless a city is under attack
     let pick = F.saveFor && F.saveUntil > GS.time && !urgent ? 'leg' : roll(['spear', 'leg', 'arch', 'cav']);

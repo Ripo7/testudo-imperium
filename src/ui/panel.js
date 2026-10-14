@@ -7,7 +7,7 @@ import { isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { BIOME } from '../map/generate.js';
 import { BASE_SPEED, FACTIONS, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, PLUNDER, pName, RES, sigOf, TYPES5, U, unitCost, UNITS, wallCost } from '../game/data.js';
-import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideMen } from '../game/battles.js';
+import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideFought, sideMen } from '../game/battles.js';
 import { armyPay, buildImp, cityYield, fortify, landShare, marketOf, plunderer, recruit, trade } from '../game/economy.js';
 import { costHtml, costMini, fcss, fmt, fmtInt, IC, icOf } from './format.js';
 import { $hint, $panel, clearSel, issueOrder, ME, myOrderables, oddsHtml, startPlacing, UI } from './state.js';
@@ -262,7 +262,7 @@ export function battlePanel(B) {
   const s0 = B.sides[0], s1 = B.sides[1];
   const m0 = sideMen(s0), m1 = sideMen(s1);
   let h = headerHtml('#c23b22', B.kind === 'city' ? `Battle for ${B.place.name}` : B.kind === 'fort' ? 'Assault on a fort' : 'Field battle', B.done ? (B.winner === 0 ? `${ownerName(s0.faction)} won` : B.winner === 1 ? `${ownerName(s1.faction)} held` : 'Stopped by a peace treaty') : `Round ${B.round}`) + '<div class="pb">';
-  h += `<div class="kv"><span class="chip" style="border-left:4px solid ${fcss(s0.faction)}">${ownerName(s0.faction)} (attacking) <b>${fmtInt(m0)}</b>/${fmtInt(B.startMen[0])}</span><span class="chip" style="border-left:4px solid ${fcss(s1.faction)}">${ownerName(s1.faction)} <b>${fmtInt(m1)}</b>/${fmtInt(B.startMen[1])}</span></div>`;
+  h += `<div class="kv"><span class="chip" style="border-left:4px solid ${fcss(s0.faction)}">${ownerName(s0.faction)} (attacking) <b>${fmtInt(m0)}</b>/${fmtInt(sideFought(s0))}</span><span class="chip" style="border-left:4px solid ${fcss(s1.faction)}">${ownerName(s1.faction)} <b>${fmtInt(m1)}</b>/${fmtInt(sideFought(s1))}</span></div>`;
   const total = Math.max(1, m0 + m1);
   h += `<div class="terrbar"><i style="background:${fcss(s0.faction)};width:${m0 / total * 100}%"></i><i style="background:${fcss(s1.faction)};width:${m1 / total * 100}%"></i></div>`;
   const mods = modsList(B);
