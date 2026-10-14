@@ -1,21 +1,26 @@
 import { sees } from './sight.js';
 import { GS, MAP, menOf } from './state.js';
-import { FACTIONS } from './data.js';
+import { FACTIONS, RES } from './data.js';
 import { nearestCity } from './armies.js';
 import { sideMen } from './battles.js';
 
 /* =========================================================
    The record of the war, read by the Overview panel and the end-of-war report:
      GS.chron   what happened: wars, peace treaties, battles, revolts, powers wiped out
-     GS.hist    each power's victory points and men under arms, every HIST_EVERY seconds
-     GS.fstats  running totals per power
+     GS.hist    each power's victory points, men under arms and income, every HIST_EVERY seconds
+     GS.fstats  running totals per power: war, conquest and economy
    It is all simulation state: deterministic, and saved with the game.
    ========================================================= */
 export const HIST_EVERY = 10;   // seconds of game time between samples
 export const newStats = () => ({
   won: 0, lost: 0, captured: 0, lostC: 0, kills: 0, dead: 0, raised: 0, peak: 0,
   wars: 0, peaces: 0, tribP: 0, tribR: 0, revolts: 0, works: 0,
+  // the economy: earned by resource; soldiers' pay (gold) and feeding the armies (food); spent on recruits, and on walls,
+  // improvements and forts (all resources added up); gold paid and received at the market; land income lost to plunder;
+  // seconds spent starving and unpaid
+  eGold: 0, eFood: 0, eWood: 0, eStone: 0, pay: 0, feed: 0, sRec: 0, sBuild: 0, mBuy: 0, mSell: 0, plund: 0, starveT: 0, unpaidT: 0,
 });
+export const costSum = (cost) => RES.reduce((s, r) => s + (cost[r] || 0), 0);
 // every power's stats, with the fields older saves lack set to zero
 export const fillStats = (list) => FACTIONS.map((_, i) => Object.assign(newStats(), (list && list[i]) || {}));
 
@@ -55,14 +60,25 @@ export function recordBattle(B) {
   bump(d, 'dead', l[1]); bump(d, 'kills', l[0]);
 }
 export function recordFall(f) { record({ k: 'fall', f }); }
+// every economy step: what each power earned and paid out
+export function recordEconomy(F, dt) {
+  const s = GS.fstats[F.id];
+  if (!s || !F.alive) return;
+  s.eGold += F.inc.gold * dt; s.eFood += F.inc.food * dt; s.eWood += F.inc.wood * dt; s.eStone += F.inc.stone * dt;
+  s.pay += F.upk.gold * dt; s.feed += F.upk.food * dt;
+  if (F.starving) s.starveT += dt;
+  if (F.unpaid) s.unpaidT += dt;
+}
 
-// one row per sample: [time, points of each power..., men of each power...]
+// one row per sample: [time, points of each power..., men of each power..., income per second of each power (all resources)...]
+// (saves from before income was sampled have shorter rows)
 export function sampleHistory() {
   const men = GS.factions.map(() => 0);
   for (const a of GS.armies) if (!a.dead && a.owner >= 0) men[a.owner] += menOf(a.comp);
   const row = [Math.round(GS.time)];
   for (const F of GS.factions) row.push(F.pts);
   GS.factions.forEach((F, i) => { const m = Math.round(men[i]); row.push(m); if (m > GS.fstats[i].peak) GS.fstats[i].peak = m; });
+  for (const F of GS.factions) row.push(F.alive ? Math.round(costSum(F.inc) * 10) / 10 : 0);
   GS.hist.push(row);
 }
 export function historyTick() {

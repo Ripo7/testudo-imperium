@@ -1,7 +1,7 @@
 import { atWar, fname, hideEnvoy, makePeace, relOf, treatyOn, warsOf } from '../game/diplomacy.js';
 import { STAND } from '../game/standing.js';
 import { GS, MAP, menOf, ownerName } from '../game/state.js';
-import { $, isTouch } from '../core/util.js';
+import { $, isTouch, store } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { CAM, projectCell } from '../render/camera.js';
 import { FACTIONS, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
@@ -77,11 +77,39 @@ export function updateHUD() {
   $('btnOver').classList.toggle('on', !!UI.selOver);
 }
 export const phoneLayout = () => window.innerWidth <= 820;
+/* ---------- what is on screen ----------
+   Each floating panel can be switched off in the pause menu (UI.show, kept in this browser), and the eye in the
+   top bar hides them all at once (UI.mapView) to leave the map clear. Hidden dispatches still count: the eye
+   shows how many urgent ones there are. */
+export const PANELS = [['stand', 'Standings'], ['alerts', 'Dispatches'], ['log', 'Messages'], ['hint', 'Hints']];
+export const EYE = '<path d="M12 5C6.5 5 2.7 9.4 1.5 12c1.2 2.6 5 7 10.5 7s9.3-4.4 10.5-7C21.3 9.4 17.5 5 12 5zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9zm0-2.3a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z"/>';
+export const EYE_OFF = '<path d="M3.3 2 2 3.3l3.1 3.1C3.4 7.8 2.2 9.8 1.5 12c1.2 2.6 5 7 10.5 7 1.9 0 3.6-.5 5.1-1.3l3.6 3.6 1.3-1.3zM12 16.5A4.5 4.5 0 0 1 7.6 11l1.8 1.8a2.7 2.7 0 0 0 1.8 1.8l1.8 1.8c-.3.1-.7.1-1 .1zM12 5c-1.3 0-2.5.2-3.6.6l2 2c.5-.1 1-.1 1.6-.1a4.5 4.5 0 0 1 4.5 4.5c0 .5 0 1-.2 1.5l2.8 2.8c1.6-1.2 2.8-2.9 3.4-4.3C21.3 9.4 17.5 5 12 5z"/>';
+export const panelShown = (k) => !UI.mapView && (!UI.show || UI.show[k] !== false);
+export function applyPanels() {
+  const hud = $('hud');
+  for (const [k] of PANELS) hud.classList.toggle('hide-' + k, !panelShown(k));
+  const b = $('btnView');
+  b.classList.toggle('on', !!UI.mapView);
+  b.setAttribute('aria-label', UI.mapView ? 'Show the panels' : 'Hide the panels');
+  b.title = UI.mapView ? 'Show the panels again (V)' : 'Map view: hide the panels (V)';
+  $('viewIco').innerHTML = UI.mapView ? EYE_OFF : EYE;
+  alertsKey = '';
+  if (UI.mode === 'play' && GS.factions.length) renderAlerts(GS.auto ? UI.viewF : PLAYER);
+}
+export function toggleMapView() {
+  UI.mapView = !UI.mapView;
+  store.set('testudo.mapView', UI.mapView);
+  Sfx.click(); applyPanels();
+}
 // dispatches, under the crest (a scrolling row on phones); --alerts-h keeps the panel and the toasts clear of them
 export let alertsKey = '';
 export function renderAlerts(V) {
-  const el = $('alerts');
-  const h = GS.over || UI.mode !== 'play' ? '' : alertsHtml(computeAlerts(V), phoneLayout() ? 3 : 6);
+  const el = $('alerts'), shown = panelShown('alerts');
+  const list = GS.over || UI.mode !== 'play' ? [] : computeAlerts(V);
+  // hidden dispatches: the eye in the top bar counts the urgent ones
+  const bad = shown ? 0 : list.filter((a) => a.sev === 'bad').length, badge = $('viewBadge'), bt = bad ? String(bad) : '';
+  if (badge.textContent !== bt) { badge.textContent = bt; badge.classList.toggle('hidden', !bt); badge.title = bt ? `${bt} urgent dispatch${bad > 1 ? 'es' : ''}` : ''; }
+  const h = shown ? alertsHtml(list, phoneLayout() ? 3 : 6) : '';
   if (h === alertsKey) return;
   alertsKey = h;
   el.innerHTML = h;
@@ -127,6 +155,7 @@ $('standRows').addEventListener('pointerdown', (e) => {
 });
 $('alerts').addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) goTo(b.dataset.go); });
 $('btnOver').addEventListener('click', () => toggleOverview());
+$('btnView').addEventListener('click', () => toggleMapView());
 $('crestbar').addEventListener('click', () => { if (!GS.auto) return; UI.viewF = (UI.viewF + 1) % GS.factions.length; Sfx.click(); updateHUD(); });
 $('speed').addEventListener('click', (e) => { const b = e.target.closest('[data-sp]'); if (b) setSpeed(+b.dataset.sp); });
 export function setSpeed(v) { if (GS.over) return; if (v > 0) UI.lastSpeed = v; GS.speed = v; Sfx.click(); updateHUD(); }
@@ -139,7 +168,7 @@ export function log(msg, type, focus) {
   if (focus) el.addEventListener('click', () => focusOn(focus));
   $log.appendChild(el);
   logItems.push({ el, t: performance.now() });
-  const max = phoneLayout() ? 2 : GS.auto ? 4 : 5;
+  const max = phoneLayout() ? 1 : GS.auto ? 4 : 5;
   while (logItems.length > max) logItems.shift().el.remove();
 }
 export function updateLog() {

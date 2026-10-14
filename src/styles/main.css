@@ -91,6 +91,21 @@ body.auto #crestbar { cursor: pointer; }
 .ibtn { width: 34px; height: 32px; border-radius: 5px; display: grid; place-items: center; }
 .ibtn:hover { background: rgba(226, 189, 98, .1); }
 .ibtn svg { width: 18px; height: 18px; fill: var(--bone); }
+.ibtn { position: relative; }
+.ibtn.on { background: linear-gradient(#f3d27c, #c48f33); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 0 0 1px #6b4a16; }
+.ibtn.on svg { fill: var(--ink); }
+.badge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; display: grid; place-items: center; background: var(--minium); color: #fff; font: 800 10.5px/1 var(--font-ui); box-shadow: 0 0 0 2px #22170f; pointer-events: none; }
+/* panels switched off (pause menu) or the map view (the eye): the tool buttons stay */
+#hud.hide-stand #standRows { display: none; }
+#hud.hide-stand #tools { margin-top: 0; padding-top: 0; border-top: 0; }
+#hud.hide-alerts #alerts, #hud.hide-log #log, #hud.hide-hint #hintbar { display: none !important; }
+.show-opts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; margin: 20px auto 6px; max-width: 360px; font-size: 13px; color: var(--bone2); }
+.show-opts span { flex-basis: 100%; font: 400 16px var(--font-display); color: var(--gold); }
+.show-opts button { padding: 6px 12px; border-radius: 5px; background: var(--wax2); box-shadow: inset 0 0 0 1px var(--line); font-weight: 700; color: var(--bone2); opacity: .7; }
+.show-opts button::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 2px; box-shadow: inset 0 0 0 1.5px var(--bone2); vertical-align: 0; }
+.show-opts button.on { color: var(--bone); opacity: 1; box-shadow: inset 0 0 0 1px var(--gold); }
+.show-opts button.on::before { background: var(--gold); box-shadow: none; }
+.show-opts p { flex-basis: 100%; margin: 2px 0 0; font-size: 12.5px; }
 .spacer { flex: 1; pointer-events: none !important; }
 
 /* ---------- standings ---------- */
@@ -393,6 +408,20 @@ svg.ch { display: block; max-width: 100%; height: auto; overflow: visible; touch
 .rep-ledger .ledger thead .sw { display: inline-block; width: 10px; height: 12px; margin-right: 6px; vertical-align: -1px; clip-path: polygon(0 0, 100% 0, 100% 72%, 50% 100%, 0 72%); }
 .rep-ledger .ledger td.top { color: var(--gold-hi); font-weight: 800; }
 .rep-ledger .ledger .me { background: rgba(226, 189, 98, .07); }
+.report h4 { margin: 0; font: 400 17px var(--font-display); color: var(--bone); }
+.rep-econ .rep-chart { margin-top: 14px; }
+.rep-econ .tblwrap { max-height: none; margin-top: 18px; }
+.ledger.econ { font-size: 13px; }
+.ledger.econ th, .ledger.econ td { padding: 4px 10px; }
+.ledger.econ thead th { font-weight: 700; color: var(--bone); font-size: 12.5px; }
+.ledger.econ thead .sw { display: inline-block; width: 10px; height: 12px; margin-right: 6px; vertical-align: -1px; clip-path: polygon(0 0, 100% 0, 100% 72%, 50% 100%, 0 72%); }
+.ledger.econ th[scope=row] { text-transform: none; font-weight: 500; color: var(--bone2); padding-left: 18px; }
+.ledger.econ tr.total th[scope=row] { color: var(--bone); font-weight: 700; padding-left: 10px; }
+.ledger.econ tr.total td { font-weight: 800; }
+.ledger.econ tr.grp th { text-align: left; padding: 12px 10px 3px; font: 400 14px var(--font-display); color: var(--gold); text-transform: none; }
+.ledger.econ tbody tr.grp, .ledger.econ tbody tr.grp + tr { box-shadow: none; }
+.ledger.econ .me { background: rgba(226, 189, 98, .07); }
+.ledger td .cb { display: block; height: 3px; margin: 3px 0 0 auto; border-radius: 2px; background: var(--gold-lo); opacity: .75; min-width: 0; }
 .gantt { display: flex; flex-direction: column; gap: 10px; }
 .gw { display: grid; grid-template-columns: minmax(180px, 30%) 1fr; gap: 3px 16px; align-items: center; }
 .gw .sw, .gl .sw { display: inline-block; width: 10px; height: 12px; margin: 0 5px 0 0; vertical-align: -1px; clip-path: polygon(0 0, 100% 0, 100% 72%, 50% 100%, 0 72%); }
@@ -468,7 +497,7 @@ svg.ch { display: block; max-width: 100%; height: auto; overflow: visible; touch
   #stand .vb { grid-column: 1 / -1; margin: 0 0 3px; }
   #overbar { top: auto; bottom: calc(var(--sab) + 16px); font-size: 14px; }
   #log { left: 6px; right: auto; width: calc(100vw - 118px); max-width: 320px; top: calc(var(--sat) + 106px + var(--alerts-h, 0px)); bottom: auto; }
-  .ev { font-size: 12px; padding: 5px 8px; }
+  .ev { font-size: 12px; padding: 5px 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   #hintbar { white-space: normal; width: 92vw; text-align: center; font-size: 12.5px; }
   #placebar { top: auto; bottom: calc(var(--sab) + 70px); width: 92vw; justify-content: space-between; }
   #envoy { top: calc(var(--sat) + 104px); width: 94vw; flex-wrap: wrap; font-size: 12.5px; }
@@ -486,6 +515,12 @@ svg.ch { display: block; max-width: 100%; height: auto; overflow: visible; touch
   .gw.scale > div:first-child { display: none; }
   .rep-actions { margin: 22px -14px 0; }
   .rep-ledger .ledger { font-size: 12px; }
+  .ledger.econ { font-size: 12px; }
+  .ledger.econ th, .ledger.econ td { padding: 4px 4px; }
+  .ledger.econ thead th { font-size: 11px; }
+  .ledger.econ th[scope=row] { white-space: normal; padding-left: 9px; }
+  .ledger.econ tr.total th[scope=row] { padding-left: 4px; }
+  .ledger.econ thead .sw { display: block; margin: 0 0 2px auto; }
   .rep-ledger .ledger th, .rep-ledger .ledger td { padding: 4px 4px; }
   .rep-ledger .ledger thead th { font-size: 11px; }
   .rep-ledger .ledger th[scope=row] { white-space: normal; padding-left: 7px; }

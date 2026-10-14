@@ -39,11 +39,20 @@ export default async function smoke() {
       check(r.fog.on && r.fog.hidden > 0 && r.fog.unknownCity, `[${label}] fog of war hides ${r.fog.hidden} of ${r.fog.enemies} enemy armies and unseen defenders`);
       check(r.record.battles > 5 && r.record.samples >= Math.floor(r.time / 10) && r.record.raised > 0, `[${label}] the war is recorded (${r.record.events} events, ${r.record.samples} samples)`);
       await page.waitForTimeout(800);   // a few real frames with the renderer on
+      const view = await page.evaluate(() => {
+        const vis = (id) => { const el = document.getElementById(id); return !!el && el.offsetParent !== null && getComputedStyle(el).display !== 'none'; };
+        document.getElementById('btnView').click();
+        const hidden = { stand: vis('standRows'), tools: vis('tools'), log: vis('log'), hint: vis('hintbar') };
+        document.getElementById('btnView').click();
+        return { hidden, back: vis('standRows'), stored: localStorage.getItem('testudo.mapView') };
+      });
+      check(!view.hidden.stand && view.hidden.tools && !view.hidden.log && !view.hidden.hint && view.back && view.stored === 'false', `[${label}] the eye hides the panels (keeping the tool buttons) and brings them back`);
       // the end of the war: the report with its charts, ledger, wars and key moments
       await page.evaluate(() => { const T = window.__T; T.setNoRender(true); if (!T.GS.over) T.endCampaign(true); });   // the renderer off: software WebGL frames are slow
       await page.waitForFunction(() => !document.getElementById('over').classList.contains('hidden'), null, { timeout: 60000, polling: 250 });
-      const rep = await page.evaluate(() => { const R = document.getElementById('report'); return { charts: R.querySelectorAll('svg.ch').length, lines: R.querySelectorAll('svg.ch .ln').length, ledger: R.querySelectorAll('.rep-ledger tbody tr').length, moments: R.querySelectorAll('.rep-moments .ce').length, width: R.scrollWidth <= R.clientWidth + 1 }; });
-      check(rep.charts === 2 && rep.lines >= 6 && rep.ledger > 10 && rep.moments > 3 && rep.width, `[${label}] end-of-war report: ${rep.charts} charts, ${rep.ledger} ledger rows, ${rep.moments} key moments, fits the screen`);
+      const rep = await page.evaluate(() => { const R = document.getElementById('report'); return { charts: R.querySelectorAll('svg.ch').length, lines: R.querySelectorAll('svg.ch .ln').length, ledger: R.querySelectorAll('.rep-ledger tbody tr').length, econ: R.querySelectorAll('.ledger.econ tbody tr:not(.grp)').length, earned: [...R.querySelectorAll('.ledger.econ tr.total td')].map((td) => parseInt(td.textContent.replace(/,/g, ''), 10)), moments: R.querySelectorAll('.rep-moments .ce').length, width: R.scrollWidth <= R.clientWidth + 1 }; });
+      check(rep.charts === 3 && rep.lines >= 9 && rep.ledger > 10 && rep.moments > 3 && rep.width, `[${label}] end-of-war report: ${rep.charts} charts, ${rep.ledger} ledger rows, ${rep.moments} key moments, fits the screen${rep.width ? '' : ' (it does not)'}`);
+      check(rep.econ >= 18 && rep.earned.length === 4 && rep.earned.every((v) => v > 1000), `[${label}] economy in the report: ${rep.econ} rows, earned ${rep.earned.join(', ')}`);
       check(!errors.length, `[${label}] no script errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);
       await ctx.close();
     }
