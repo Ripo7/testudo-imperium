@@ -1,18 +1,18 @@
 import { seesArmy, seesBattle } from '../game/sight.js';
 import { canAfford, cellOf, GS, MAP } from '../game/state.js';
-import { $, clamp } from '../core/util.js';
+import { $, clamp, isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { ghost } from '../render/overlays.js';
 import { CAM, pickCell, projectCell } from '../render/camera.js';
 import { updateTerrainColors } from '../render/terrain.js';
 import { fortGeo } from '../render/cities.js';
-import { FACTIONS, fortCost, PLAYER } from '../game/data.js';
-import { canOrder, orderMove, orderTarget } from '../game/armies.js';
+import { fortCost, PLAYER } from '../game/data.js';
+import { canOrder, findPath, orderMove, orderTarget, pathTime } from '../game/armies.js';
 import { estimateOdds } from '../game/battles.js';
 import { buildFort, fortSpotOk } from '../game/economy.js';
 import { fmtInt, oddsWord } from './format.js';
 import { renderPanel } from './panel.js';
-import { flashHint, log } from './hud.js';
+import { flashHint, focusOn, log } from './hud.js';
 import { DIR } from './director.js';
 
 /* =========================================================
@@ -22,17 +22,18 @@ export const SPECT = -9;
 export let ME = PLAYER;
 export function setME(v) { ME = v; }
 // the power the human commands; SPECT while autoplay runs everything
-export const UI = { viewF: PLAYER, mode: 'title', sel: [], selCity: null, selFort: null, selProv: null, selBattle: null, selEnemy: null, placing: false, hold: false, panelT: 0, hudT: 0, t: 0, lastSpeed: 1, popup: null };
-export const $panel = $('panel'), $popup = $('popup'), $tip = $('tip'), $log = $('log'), $hint = $('hintbar');
+// order: the order a touch has planned for the selected armies, waiting for a second tap (see planOrder)
+export const UI = { viewF: PLAYER, mode: 'title', sel: [], selCity: null, selFort: null, selProv: null, selBattle: null, selEnemy: null, placing: false, hold: false, panelT: 0, hudT: 0, t: 0, lastSpeed: 1, order: null };
+export const $panel = $('panel'), $tip = $('tip'), $log = $('log'), $hint = $('hintbar');
 
 export function clearSel(keepProv) {
   UI.selOver = null; $panel.classList.remove('full');
   UI.selDip = null; UI.sel = []; UI.selCity = null; UI.selFort = null; UI.selBattle = null; UI.selEnemy = null;
   if (!keepProv && UI.selProv != null) { UI.selProv = null; updateTerrainColors(); }
-  hidePopup();
+  cancelOrder();
 }
 export function selectThing(h, add) {
-  hidePopup();
+  cancelOrder();
   if (!h) { clearSel(); renderPanel(true); return; }
   if (h.kind === 'army' && h.ref.owner === ME) {
     if (add && UI.sel.length) { if (UI.sel.includes(h.ref)) UI.sel = UI.sel.filter((x) => x !== h.ref); else UI.sel.push(h.ref); }
@@ -53,13 +54,15 @@ export function selectThing(h, add) {
 
 /* ---------- hit testing ---------- */
 export const _pp = {};
+export const TOUCH_REACH = 1.4;   // a fingertip covers more than a mouse pointer: wider hit areas on touch screens
 export function hitTest(sx, sy) {
   let best = null, bd = Infinity;
+  const reach = isTouch ? TOUCH_REACH : 1;
   const consider = (kind, ref, x, y, h, r) => {
     projectCell(x, y, h, _pp);
     if (!_pp.vis) return;
     const d = Math.hypot(_pp.x - sx, _pp.y - sy);
-    if (d < r && d < bd) { bd = d; best = { kind, ref }; }
+    if (d < r * reach && d < bd) { bd = d; best = { kind, ref }; }
   };
   const zoomK = clamp(70 / CAM.d, 0.6, 3);
   for (const B of GS.battles) if (!B.done && seesBattle(B)) consider('battle', B, B.x, B.y, 1.2, 26);
@@ -73,6 +76,38 @@ export function hitTest(sx, sy) {
   return null;
 }
 export function myOrderables() { return UI.sel.filter((a) => !a.dead && a.owner === ME && canOrder(a)); }
+// the armies of the commanded power, those waiting for orders first (the order the Armies button steps through)
+export function myArmies() {
+  const L = GS.armies.filter((a) => !a.dead && a.owner === ME);
+  const rank = (a) => (a.state === 'idle' && !a.target ? 0 : 1);
+  return L.sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+}
+export const idleArmies = () => GS.armies.filter((a) => !a.dead && a.owner === ME && a.state === 'idle' && !a.target).length;
+// select the next (dir 1) or previous (dir -1) army and bring it into view
+export function cycleArmy(dir) {
+  if (GS.auto) return;
+  const L = myArmies();
+  if (!L.length) { Sfx.deny(); flashHint('No army in the field: recruit one in a city.'); return; }
+  const cur = UI.sel.length === 1 ? L.indexOf(UI.sel[0]) : -1;
+  const a = L[cur < 0 ? (dir > 0 ? 0 : L.length - 1) : (cur + dir + L.length) % L.length];
+  clearSel(true); UI.sel = [a]; focusOn(a);
+  Sfx.click(); renderPanel(true);
+}
+export function selectAllArmies() {
+  if (GS.auto) return;
+  const L = myArmies();
+  if (!L.length) { Sfx.deny(); flashHint('No army in the field: recruit one in a city.'); return; }
+  clearSel(true); UI.sel = L.sort((a, b) => a.id - b.id);
+  Sfx.click(); renderPanel(true);
+}
+// add an army of ours to the selection, or take it out (Shift-click; a long press on touch screens)
+export function toggleInSelection(a) {
+  cancelOrder();
+  if (!UI.sel.length) { clearSel(true); UI.sel = [a]; }
+  else if (UI.sel.includes(a)) { if (UI.sel.length > 1) UI.sel = UI.sel.filter((x) => x !== a); }
+  else UI.sel.push(a);
+  Sfx.click(); renderPanel(true);
+}
 
 /* ---------- orders ---------- */
 export function stationSpot(c, k) {
@@ -95,6 +130,7 @@ export function issueOrder(h, cell) {
       if (h.ref.owner !== ME) { any = orderTarget(a, 'city', h.ref) || any; hostile = true; }
       else { const s = stationSpot(h.ref, k); any = orderMove(a, s.x, s.y) || any; }
     } else if (h && h.kind === 'fort' && h.ref.owner !== ME) { any = orderTarget(a, 'fort', h.ref) || any; hostile = true; }
+    else if (h && h.kind === 'fort') { const s = stationSpot(h.ref, k); any = orderMove(a, s.x, s.y) || any; }
     else if (h && h.kind === 'battle') { any = orderMove(a, h.ref.x, h.ref.y) || any; hostile = true; }
     else if (cell) {
       const n = arms.length, row = Math.ceil(Math.sqrt(n)), ix = k % row, iy = Math.floor(k / row);
@@ -119,52 +155,71 @@ export function oddsHtml(o, title) {
   return `<div class="odds"><div style="font-size:11px;opacity:.75">${title || 'Odds of victory'}</div><div class="big ${cls}">${Math.round(o.p * 100)}% — ${w}</div><div style="font-size:11.5px;opacity:.85">Expected losses ≈ ${fmtInt(o.attLoss)} men</div>${mods ? `<ul>${mods}</ul>` : ''}</div>`;
 }
 
-/* ---------- popup (touch) ---------- */
-export function showPopup(sx, sy, html) {
-  $popup.innerHTML = html;
-  $popup.classList.remove('hidden');
-  const w = $popup.offsetWidth, hgt = $popup.offsetHeight;
-  $popup.style.left = clamp(sx - w / 2, 8, window.innerWidth - w - 8) + 'px';
-  $popup.style.top = clamp(sy - hgt - 18, 70, window.innerHeight - hgt - 8) + 'px';
+/* ---------- orders on touch screens: plan with a tap, confirm with a second ----------
+   With an army selected, a tap plants a standard where it would go (the route and the march time on the map,
+   the odds in the panel); a second tap on the same spot or target, or the panel's button, gives the order.
+   A stray tap only moves the standard, and the panel's ✕ drops it. */
+export const SAME_SPOT = 34;   // px: a second tap this close to the standard confirms the order
+export let orderSeq = 0;
+export function planOrder(h, cell) {
+  const arms = myOrderables();
+  if (!arms.length || (!h && !cell)) return;
+  const tgt = h && h.kind !== 'prov' ? h : null;
+  const x = tgt ? tgt.ref.x : cell.x, y = tgt ? tgt.ref.y : cell.y;
+  // the route of the army farthest from it: the march time is when the last one gets there
+  const a = arms.reduce((m, b) => (Math.hypot(b.x - x, b.y - y) > Math.hypot(m.x - x, m.y - y) ? b : m), arms[0]);
+  const path = findPath(a.x, a.y, x, y, ME);
+  UI.order = { h: tgt, cell: tgt ? null : cell, x, y, path, ok: !!path, eta: path ? pathTime(a, path) : 0, lead: a, seq: ++orderSeq };
+  Sfx.click();
+  renderPanel(true);
 }
-export function hidePopup() { $popup.classList.add('hidden'); UI.popup = null; }
+export function cancelOrder() { UI.order = null; }
+export function confirmOrder() {
+  const o = UI.order;
+  UI.order = null;
+  if (!o) return false;
+  if (!o.ok) { Sfx.deny(); flashHint('No way there: wide rivers need a bridge or a ford, and the high peaks can\'t be crossed.'); renderPanel(true); return false; }
+  return issueOrder(o.h, o.cell || { x: o.x, y: o.y });
+}
+// is a tap at (sx, sy) on h a second tap on the planned order?
+export function onOrder(h, sx, sy) {
+  const o = UI.order;
+  if (!o) return false;
+  if (o.h) return !!h && h.kind === o.h.kind && h.ref === o.h.ref;
+  // near the foot of the standard, or on its cloth (about 22 px above)
+  projectCell(o.x, o.y, 0.2, _pp);
+  return _pp.vis && Math.min(Math.hypot(_pp.x - sx, _pp.y - sy), Math.hypot(_pp.x - sx, _pp.y - 22 - sy)) < SAME_SPOT;
+}
 export function tapAt(sx, sy) {
   const h = hitTest(sx, sy);
   if (UI.placing) { placeFortAt(h && h.cell ? h.cell : pickCell(sx, sy)); return; }
   const arms = myOrderables();
+  // nothing to command: a tap selects what it touches
   if (!arms.length) { selectThing(h && h.kind !== 'prov' ? h : (h ? { kind: 'prov', ref: h.ref } : null)); return; }
   if (!h) return;
-  if (h.kind === 'prov') { issueOrder(null, h.cell); hidePopup(); return; }
-  const name = h.kind === 'army' ? `${FACTIONS[h.ref.owner].adj} army` : h.kind === 'city' ? h.ref.name : h.kind === 'fort' ? 'Fort' : 'Battle';
-  UI.popup = h;
-  let html = `<h3>${name}</h3>`;
+  if (onOrder(h, sx, sy)) { confirmOrder(); return; }
+  // another army of ours: select it instead (a long press adds it to the selection)
   if (h.kind === 'army' && h.ref.owner === ME) {
-    if (UI.sel.includes(h.ref)) { selectThing(h); return; }
-    html += `<button class="abtn primary" data-pop="merge">Merge into this army</button><button class="abtn" data-pop="select">Select it instead</button>`;
-  } else if (h.kind === 'city' && h.ref.owner === ME) {
-    html += `<button class="abtn primary" data-pop="go">March here</button><button class="abtn" data-pop="select">Open city</button>`;
-  } else if (h.kind === 'battle') {
-    html += `<button class="abtn primary" data-pop="go">Join the battle</button><button class="abtn" data-pop="select">Watch details</button>`;
-  } else {
-    const o = attackPreview(h);
-    html += (o ? oddsHtml(o) : '') + `<div class="row2"><button class="abtn danger" data-pop="go">Attack</button><button class="abtn" data-pop="select">Inspect</button></div>`;
+    if (UI.sel.includes(h.ref)) { if (UI.order || UI.sel.length > 1) { cancelOrder(); clearSel(true); UI.sel = [h.ref]; Sfx.click(); renderPanel(true); } return; }
+    selectThing(h); return;
   }
-  html += `<button class="abtn" data-pop="close" style="justify-content:center">Cancel</button>`;
-  showPopup(sx, sy, html);
+  planOrder(h.kind === 'prov' || (h.kind === 'fort' && h.ref.owner === ME) ? null : h, h.cell || pickCell(sx, sy) || { x: h.ref.x, y: h.ref.y });
 }
-$popup.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-pop]'); if (!b || !UI.popup) return;
-  const h = UI.popup, act = b.dataset.pop;
-  hidePopup();
-  if (act === 'go' || act === 'merge') issueOrder(h);
-  else if (act === 'select') selectThing(h);
-});
+// a long press: your army joins or leaves the selection; anything else is shown in the panel
+export function longPressAt(sx, sy) {
+  const h = hitTest(sx, sy);
+  if (!h || UI.placing) return false;
+  if (h.kind === 'army' && h.ref.owner === ME && !GS.auto) toggleInSelection(h.ref);
+  else selectThing(h.kind === 'prov' ? { kind: 'prov', ref: h.ref } : h);
+  try { if (navigator.vibrate) navigator.vibrate(12); } catch (_) { /* ignore */ }
+  return true;
+}
 
 /* ---------- fort placement ---------- */
 export function startPlacing() {
   const F = GS.factions[ME];
   if (!canAfford(F, fortCost(ME))) { flashHint('Not enough resources for a fort.'); Sfx.deny(); return; }
-  UI.placing = true; $('placebar').classList.remove('hidden'); hidePopup();
+  UI.placing = true; $('placebar').classList.remove('hidden'); cancelOrder();
   ghost.geometry = fortGeo();
 }
 export function stopPlacing() { UI.placing = false; ghost.visible = false; $('placebar').classList.add('hidden'); }

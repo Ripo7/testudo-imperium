@@ -2,13 +2,13 @@ import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
 import { GS, MAP, menOf, starsOf } from '../game/state.js';
 import { $, clamp } from '../core/util.js';
 import { cellToWorld } from '../render/world.js';
-import { pathLines, ringFor, selRings, setPathLine } from '../render/overlays.js';
+import { pathLines, ringFor, selRings, setPathLine, targetRing } from '../render/overlays.js';
 import { CAM, projectCell } from '../render/camera.js';
 import { FIG_MEN } from '../render/crowds.js';
 import { FACTIONS } from '../game/data.js';
 import { DISPUTED } from '../game/standing.js';
 import { sideMen } from '../game/battles.js';
-import { fcss, fmt } from './format.js';
+import { etaShort, fcss, fmt } from './format.js';
 import { _pp, ME, UI } from './state.js';
 
 /* =========================================================
@@ -18,7 +18,7 @@ export const $labels = $('labels');
 export const LBL = { prov: [], city: [], army: new Map(), battle: new Map() };
 export function mkLabel(cls, html) { const el = document.createElement('div'); el.className = 'lb ' + cls; el.innerHTML = html; $labels.appendChild(el); return { el, last: {} }; }
 export function buildMapLabels() {
-  $labels.innerHTML = ''; LBL.prov = []; LBL.city = []; LBL.army.clear(); LBL.battle.clear();
+  $labels.innerHTML = ''; LBL.prov = []; LBL.city = []; LBL.army.clear(); LBL.battle.clear(); LBL.flag = null;
   for (const P of MAP.provinces) LBL.prov.push(Object.assign(mkLabel('pv', P.name), { P }));
   for (const c of MAP.cities) LBL.city.push(Object.assign(mkLabel('ct' + (c.major ? ' major' : ''), ''), { c }));
 }
@@ -100,9 +100,23 @@ export function updateLabels() {
     setHtml(L, 'h', `⚔ ${fmt(m0)} <span class="bar"><i style="width:${(m0 / tot * 100).toFixed(0)}%;background:${fcss(B.sides[0].faction)}"></i><i style="width:${(m1 / tot * 100).toFixed(0)}%;background:${fcss(B.sides[1].faction)}"></i></span> ${fmt(m1)}`);
   }
   for (const [id, L] of LBL.battle) if (!seenB.has(id)) { L.el.remove(); LBL.battle.delete(id); }
+  updateStandard();
+}
+// the standard planted where a planned march (touch) would send the selected armies, with the march time
+// (an order aimed at a target rings the target instead: see updateSelectionVisuals)
+export const STANDARD = '<svg viewBox="0 0 28 40" aria-hidden="true"><path d="M13 3h2v36h-2z" fill="#4a3018"/><circle cx="14" cy="3.2" r="2.6" fill="#f7e0a0" stroke="#7a5332" stroke-width=".8"/><path d="M4 7.5h20" stroke="#e2bd62" stroke-width="2" stroke-linecap="round"/><path class="cloth" d="M6 8.5h16v13.5l-2 1.6-2-1.6-2 1.6-2-1.6-2 1.6-2-1.6-2 1.6-2-1.6z"/><path d="M9.5 12.5h9M9.5 16.5h9" stroke="rgba(36,21,10,.45)" stroke-width="1.2"/></svg>';
+export function updateStandard() {
+  const o = UI.order && !UI.order.h ? UI.order : null;
+  let L = LBL.flag;
+  if (!o) { if (L && L.last.vis !== false) { L.el.style.display = 'none'; L.last.vis = false; } return; }
+  if (!L) { L = LBL.flag = mkLabel('flag', ''); L.last.vis = true; }
+  // a new order plants the standard again (its drop animation)
+  if (L.last.seq !== o.seq) { L.last.seq = o.seq; L.el.innerHTML = `${STANDARD}<span>${o.ok ? etaShort(o.eta) : 'no way'}</span>`; L.el.className = 'lb flag' + (o.ok ? '' : ' no'); }
+  placeLabel(L, o.x, o.y, 0.2, 2);
 }
 
 /* ---------- selection visuals ---------- */
+export const STILL = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);   // no pulsing rings
 export function updateSelectionVisuals() {
   let k = 0;
   const ringAt = (x, y, r, color) => {
@@ -116,7 +130,17 @@ export function updateSelectionVisuals() {
   if (UI.selFort && !UI.selFort.dead) ringAt(UI.selFort.x, UI.selFort.y, 1.0);
   for (let i = k; i < selRings.length; i++) if (selRings[i]) selRings[i].visible = false;
   let j = 0;
-  for (const a of UI.sel) if (!a.dead && a.owner === ME) setPathLine(j++, a);
-  if (GS.auto && UI.selEnemy && !UI.selEnemy.dead) setPathLine(j++, UI.selEnemy);
+  // a planned order (touch): its route from the army with the longest way to go, and a pulsing ring on its target
+  const o = UI.order, T = o && o.h, d = CAM.d;
+  if (o && o.path && !o.lead.dead) setPathLine(j++, { id: 'plan', x: o.lead.x, y: o.lead.y, owner: ME, path: o.path, pi: 0, pathVersion: o.seq, target: T ? { kind: T.kind === 'battle' ? 'army' : T.kind, ref: T.ref } : null }, d);
+  targetRing.visible = !!T;
+  if (T) {
+    const r = T.kind === 'city' ? (T.ref.major ? 2.2 : 1.45) : T.kind === 'army' ? 0.85 + Math.sqrt(Math.max(1, menOf(T.ref.comp) / FIG_MEN)) * 0.11 : T.kind === 'battle' ? 2.2 : 1.2;
+    cellToWorld(T.ref.x, T.ref.y, targetRing.position); targetRing.position.y = Math.max(targetRing.position.y, 0) + 0.1;
+    targetRing.scale.setScalar(r * (STILL ? 1 : 1 + 0.06 * Math.sin(performance.now() / 160)));
+    targetRing.material.color.set(T.kind === 'city' && T.ref.owner === ME ? 0xfff1a8 : 0xff7a6a);
+  }
+  for (const a of UI.sel) if (!a.dead && a.owner === ME) setPathLine(j++, a, d);
+  if (GS.auto && UI.selEnemy && !UI.selEnemy.dead) setPathLine(j++, UI.selEnemy, d);
   for (let i = j; i < pathLines.length; i++) if (pathLines[i]) pathLines[i].visible = false;
 }

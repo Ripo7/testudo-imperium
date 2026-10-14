@@ -1,4 +1,4 @@
-import { groundInfo, mergeArmies, orderTarget, splitArmy } from '../game/armies.js';
+import { groundInfo, mergeArmies, nearestCity, orderTarget, pathTime, splitArmy } from '../game/armies.js';
 import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
 import { atWar, declareWar, mins, peaceAnswer, relOf, renewTreaty, suePeace, treatyAnswer, wearyWord } from '../game/diplomacy.js';
 import { DISPUTED, holdsIn, placesOf, provSecure, provW, SET_W } from '../game/standing.js';
@@ -6,11 +6,14 @@ import { canAfford, dist, emptyComp, GS, MAP, menOf, ownerName, provAt, starsOf 
 import { isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { BIOME } from '../map/generate.js';
-import { BASE_SPEED, FACTIONS, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, PLUNDER, pName, RES, sigOf, TYPES5, U, unitCost, UNITS, wallCost } from '../game/data.js';
+import { FACTIONS, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, PLUNDER, pName, RES, sigOf, TYPES5, U, unitCost, UNITS, wallCost } from '../game/data.js';
 import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideFought, sideMen } from '../game/battles.js';
 import { armyPay, buildImp, cityYield, fortify, landShare, marketOf, plunderer, recruit, trade } from '../game/economy.js';
-import { costHtml, costMini, fcss, fmt, fmtInt, IC, icOf } from './format.js';
-import { $hint, $panel, clearSel, issueOrder, ME, myOrderables, oddsHtml, startPlacing, UI } from './state.js';
+import { costHtml, costMini, etaShort, fcss, fmt, fmtInt, IC, icOf } from './format.js';
+import {
+  $hint, $panel, cancelOrder, clearSel, confirmOrder, cycleArmy, issueOrder, ME, myArmies, myOrderables, oddsHtml, selectAllArmies,
+  selectThing, startPlacing, UI,
+} from './state.js';
 import { flashHint, focusOn, goTo, log, phoneLayout, updateHUD } from './hud.js';
 import { overviewPanel } from './overview.js';
 import { updateTerrainColors } from '../render/terrain.js';
@@ -53,13 +56,19 @@ export function doAct(act) {
     }
     case 'stop': for (const a of myOrderables()) { a.path = null; a.target = null; a.state = 'idle'; } Sfx.click(); break;
     case 'selarmy': { const a = GS.armies.find((x) => x.id === +arg); if (a) { clearSel(true); UI.sel = [a]; focusOn(a); } break; }
+    case 'cycle': cycleArmy(+arg); return;
+    case 'all': selectAllArmies(); return;
+    case 'confirm': confirmOrder(); break;
+    case 'unplan': cancelOrder(); Sfx.click(); break;
+    case 'inspect': { const o = UI.order; if (o && o.h) { selectThing(o.h); return; } break; }
     case 'attack': { const tgt = UI.selCity || UI.selEnemy || UI.selFort; if (tgt) issueOrder({ kind: UI.selCity ? 'city' : UI.selEnemy ? 'army' : 'fort', ref: tgt }); break; }
     case 'focus': { const t = UI.selCity || UI.selFort || UI.selBattle || UI.sel[0] || UI.selEnemy; if (t) focusOn(t); break; }
   }
   renderPanel(true);
 }
-export function headerHtml(color, title, sub) {
-  return `<div class="ph" style="--fc:${color}"><button class="grip" data-sheet aria-label="Show more or less"></button><h2>${title}</h2><div class="sub">${sub}</div><button class="x" data-act="close" aria-label="Close">✕</button></div>`;
+// a panel's header; tools: buttons shown before the ✕, close: what the ✕ does
+export function headerHtml(color, title, sub, tools, close) {
+  return `<div class="ph${tools ? ' has-tools' : ''}" style="--fc:${color}"><button class="grip" data-sheet aria-label="Show more or less"></button><h2>${title}</h2><div class="sub">${sub}</div>${tools ? `<span class="ph-tools">${tools}</span>` : ''}<button class="x" data-act="${close || 'close'}" aria-label="${close === 'unplan' ? 'Cancel the order' : 'Close'}">✕</button></div>`;
 }
 export function yieldChips(y) { return RES.filter((r) => y[r] > 0.05).map((r) => `<span class="chip">${IC[r]}<b>+${y[r].toFixed(1)}</b>/s</span>`).join(''); }
 export function wallsDots(n) { return '▮'.repeat(n) + '<span style="opacity:.3">' + '▮'.repeat(3 - n) + '</span>'; }
@@ -115,17 +124,19 @@ export function cityPanel(c) {
   const provLine = `<div class="note">Province of ${P.name}: ${provStatus(P)}.</div>`;
   h += `<div class="kv"><span class="chip">${IC.men}militia <b>${known ? fmtInt(c.militia) : '?'}</b>/${known ? fmtInt(c.militiaMax) : '?'}</span><span class="chip">${IC.walls}walls <b style="letter-spacing:-1px">${wallsDots(c.walls)}</b></span>${besieged && known ? '<span class="chip" style="background:#8a2018">Under attack</span>' : ''}</div>`;
   const k = 0.8 * c.loyal, sc = (y) => Object.fromEntries(RES.map((r) => [r, y[r] * k]));
-  h += provLine;
-  if (c.loyal < 0.99) h += `<div class="note">Recently conquered: the people are restless, income at <b>${Math.round(c.loyal * 100)}%</b> (recovers over time).</div>`;
+  // the city's standing and income (in a city of ours, after the recruits: what a ruler opens it for)
+  let info = provLine;
+  if (c.loyal < 0.99) info += `<div class="note">Recently conquered: the people are restless, income at <b>${Math.round(c.loyal * 100)}%</b> (recovers over time).</div>`;
   if (c.owner >= 0) {
     const secure = provSecure(P), pct = Math.round(SET_W(c) / provW(P) * 100);
     const cy = sc(cityYield(c, c.owner)), ly = sc(landShare(c)), tot = Object.fromEntries(RES.map((r) => [r, cy[r] + ly[r]]));
-    h += `<div class="sect" title="The city's own income, plus its share of the province's land">Income · the city and ${pct}% of ${P.name}'s land${secure ? ', secure +12%' : ''}</div><div class="kv">${yieldChips(tot)}</div>`;
+    info += `<div class="sect" title="The city's own income, plus its share of the province's land">Income · the city and ${pct}% of ${P.name}'s land${secure ? ', secure +12%' : ''}</div><div class="kv">${yieldChips(tot)}</div>`;
     const pl = plunderer(c.prov, c.owner);
-    if (pl) h += `<div class="note">${ownerName(pl.owner)} troops are plundering ${P.name}: land income <b>−${Math.round((1 - PLUNDER) * 100)}%</b>. Drive them off, or guard the countryside with a fort.</div>`;
+    if (pl) info += `<div class="note">${ownerName(pl.owner)} troops are plundering ${P.name}: land income <b>−${Math.round((1 - PLUNDER) * 100)}%</b>. Drive them off, or guard the countryside with a fort.</div>`;
     const st = GS.factions[c.owner].stretch;
-    if (st < 0.995) h += `<div class="note">${FACTIONS[c.owner].name} is overstretched: all income at <b>${Math.round(st * 100)}%</b> and conquests settle slowly.</div>`;
+    if (st < 0.995) info += `<div class="note">${FACTIONS[c.owner].name} is overstretched: all income at <b>${Math.round(st * 100)}%</b> and conquests settle slowly.</div>`;
   }
+  if (!mine) h += info;
   if (mine) {
     h += `<div class="sect">Recruit${besieged ? ' (blocked during the assault)' : ''}</div><div class="rgrid">`;
     for (const t of TYPES5) {
@@ -136,6 +147,7 @@ export function cityPanel(c) {
     if (c.queue.length) {
       h += '<div class="queue">' + c.queue.map((q, i) => `<div class="qi" title="${U(q.type, c.owner).name}"><i style="height:${i === 0 ? Math.round(q.t * 100) : 0}%"></i>${icOf(q.type, c.owner)}</div>`).join('') + '</div>';
     }
+    h += info;
     if (c.wallBuild) h += `<div class="note">Raising walls to level ${c.wallBuild.level}…</div><div class="prog"><i style="width:${Math.round(c.wallBuild.t * 100)}%"></i></div>`;
     if (!c.wallBuild && c.walls < 3) {
       const cost = wallCost(ME, c.walls + 1);
@@ -187,12 +199,13 @@ export function armyStatus(a) {
     if (T && T.kind === 'city') return (T.ref.owner === a.owner ? 'Marching to ' : 'Marching on ') + T.ref.name;
     if (T && T.kind === 'fort') return 'Marching on a fort';
     if (T && T.kind === 'merge') return 'Joining another army';
-    const left = a.path ? a.path.length - a.pi : 0;
-    return `Marching · ~${Math.max(1, Math.round(left / BASE_SPEED))}s`;
+    return `Marching · ${etaWords(pathTime(a, a.path, a.pi))}`;
   }
   const p = provAt(a.x, a.y);
   return p >= 0 ? `Camped in ${MAP.provinces[p].name}` : 'Camped';
 }
+// a march time in words: "about 25 s", "about 1:40"
+export const etaWords = (t) => `about ${etaShort(t)}`;
 export function myArmyPanel(list) {
   const comp = emptyComp(); for (const a of list) for (const t of TYPES5) comp[t] += a.comp[t];
   const men = menOf(comp);
@@ -201,29 +214,77 @@ export function myArmyPanel(list) {
   const title = list.length > 1 ? `${list.length} ${pAdj()} armies` : `${pAdj()} army`;
   const p = provAt(a0.x, a0.y), Pv = p >= 0 ? MAP.provinces[p] : null, home = !!Pv && holdsIn(Pv, ME), forage = !!Pv && Pv.holders.some((x) => atWar(ME, x));
   let upk = 0; for (const a of list) { for (const t of ['spear', 'leg', 'arch', 'cav']) upk += a.comp[t] / 100 * U(t, a.owner).upk * (perkOf(a.owner).feed || 1); upk += a.comp.siege * UNITS.siege.upk; }
-  let h = headerHtml(fcss(ME), `${title} · ${fmtInt(men)}${stars ? ' <span style="color:var(--gold);font-size:15px">' + '★'.repeat(stars) + '</span>' : ''}`, list.length === 1 ? armyStatus(a0) : 'Several armies selected') + '<div class="pb">';
+  // every army of ours: step through them from the header
+  const all = myArmies(), ids = all.map((a) => a.id).sort((x, y) => x - y), n = all.length;
+  const tools = n > 1 ? `<button data-act="cycle:-1" aria-label="Previous army" title="Previous army (Shift+N)">‹</button><button data-act="cycle:1" aria-label="Next army" title="Next army (N)">›</button>` : '';
+  const sub = list.length === 1 ? `${armyStatus(a0)}${n > 1 ? ` · ${ids.indexOf(a0.id) + 1} of ${n}` : ''}` : list.length >= n ? 'All your armies' : `${list.length} of your ${n} armies`;
+  let h = headerHtml(fcss(ME), `${title} · ${fmtInt(men)}${stars ? ' <span style="color:var(--gold);font-size:15px">' + '★'.repeat(stars) + '</span>' : ''}`, sub, tools) + '<div class="pb">';
   h += compHtml(comp, ME);
-  const pay = list.reduce((s, a) => s + armyPay(a), 0);
-  h += `<div class="kv"><span class="chip">${IC.food}eats <b>${(upk * (home || forage ? 1 : 1.35)).toFixed(1)}</b>/s${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${pay.toFixed(1)}</b>/s</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
-  if (list.length === 1) { const g = groundInfo(a0.x, a0.y); h += `<div class="kv"><span class="chip">${g.name} · <b>${g.pace}</b></span></div>`; }
-  const allDef = list.every((a) => a.stance === 'def'), allAgg = list.every((a) => a.stance === 'aggr');
-  const defName = sigOf(ME).testudo ? 'Testudo' : 'Shield wall';
-  h += `<div class="sect">Stance</div><div class="seg"><button class="${allAgg ? 'on' : ''}" data-act="stance:aggr">⚔ Aggressive</button><button class="${allDef ? 'on' : ''}" data-act="stance:def">🛡 ${defName}</button></div>`;
-  h += `<div class="note">${allDef ? (sigOf(ME).testudo ? 'Testudo: <b>+22% defense</b>, legionaries take far less from arrows, slower march.' : 'Shield wall: <b>+22% defense</b>, slower march.') : 'Aggressive: <b>+12% attack</b>, weaker defense.'}</div>`;
-  const busy = list.some((a) => a.state === 'battle' || a.state === 'rout');
-  h += '<div class="row2">';
-  if (list.length === 1) h += `<button class="abtn${busy || men < 100 ? ' off' : ''}" data-act="split" style="justify-content:center">Split</button>`;
-  else h += `<button class="abtn${busy ? ' off' : ''}" data-act="mergeall" style="justify-content:center">Merge</button>`;
-  h += `<button class="abtn${busy ? ' off' : ''}" data-act="stop" style="justify-content:center">Halt</button><button class="abtn" data-act="focus" style="justify-content:center">Center</button></div>`;
+  // what you do with an army, right under its troops
   const fighting = list.filter((a) => a.state === 'battle' && a.battle);
   if (fighting.length) {
     const ok = fighting.filter(canRetreat);
     if (ok.length) h += `<button class="abtn danger" data-act="retreat" style="justify-content:center">↩ Retreat · lose ~${Math.round(ok.reduce((m, a) => Math.max(m, retreatLoss(a)), 0) * 100)}% to the pursuit</button>`;
     else h += `<div class="note">${fighting.some((a) => a.battle.round < 2) ? 'The lines have only just met: you cannot disengage yet.' : 'Defenders cannot leave their walls.'}</div>`;
   }
-  h += `<div class="note">${isTouch ? 'Tap the map to march; tap a city or army to attack, merge or garrison.' : 'Right-click the map to march; right-click an enemy to attack, a friendly army to merge, your city to garrison.'}</div>`;
+  const busy = list.some((a) => a.state === 'battle' || a.state === 'rout');
+  h += '<div class="acts">';
+  h += `<button class="abtn${busy ? ' off' : ''}" data-act="stop">Halt</button>`;
+  if (list.length === 1) h += `<button class="abtn${busy || men < 100 ? ' off' : ''}" data-act="split">Split</button>`;
+  else h += `<button class="abtn${busy ? ' off' : ''}" data-act="mergeall">Merge</button>`;
+  h += `<button class="abtn" data-act="focus">Center</button>`;
+  if (n > 1 && list.length < n) h += `<button class="abtn" data-act="all" title="Select every army (G)">All ${n}</button>`;
+  h += '</div>';
+  const allDef = list.every((a) => a.stance === 'def'), allAgg = list.every((a) => a.stance === 'aggr');
+  const defName = sigOf(ME).testudo ? 'Testudo' : 'Shield wall';
+  h += `<div class="seg"><button class="${allAgg ? 'on' : ''}" data-act="stance:aggr">⚔ Aggressive</button><button class="${allDef ? 'on' : ''}" data-act="stance:def">🛡 ${defName}</button></div>`;
+  h += `<div class="note">${allDef ? (sigOf(ME).testudo ? 'Testudo: <b>+22% defense</b>, legionaries take far less from arrows, slower march.' : 'Shield wall: <b>+22% defense</b>, slower march.') : 'Aggressive: <b>+12% attack</b>, weaker defense.'}</div>`;
+  const pay = list.reduce((s, a) => s + armyPay(a), 0);
+  h += `<div class="kv"><span class="chip">${IC.food}eats <b>${(upk * (home || forage ? 1 : 1.35)).toFixed(1)}</b>/s${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${pay.toFixed(1)}</b>/s</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
+  if (list.length === 1) { const g = groundInfo(a0.x, a0.y); h += `<div class="kv"><span class="chip">${g.name} · <b>${g.pace}</b></span></div>`; }
+  h += `<div class="note">${isTouch ? 'Tap the map or a target: the route and the odds show first, tap again to go. Hold another of your armies to add it.' : 'Right-click the map to march; right-click an enemy to attack, a friendly army to merge, your city to garrison. Shift-click adds an army.'}</div>`;
   h += '</div>';
   return h;
+}
+// the order a touch has planned (UI.order), waiting for a second tap or the button
+export function orderPanel(o) {
+  const arms = myOrderables(), T = o.h, who = arms.length > 1 ? `${arms.length} armies` : `${fmtInt(menOf(arms[0].comp))} men`;
+  const eta = o.ok ? etaWords(o.eta) : '';
+  let title, sub, color = fcss(ME), btns, note = '';
+  if (!o.ok) {
+    title = 'No way there'; sub = 'Wide rivers need a bridge or a ford, and the high peaks can\'t be crossed.';
+    btns = '';
+  } else if (!T) {
+    const g = groundInfo(o.x, o.y), p = provAt(o.x, o.y);
+    title = p >= 0 ? `March into ${MAP.provinces[p].name}` : 'March';
+    sub = `${g.name}, ${g.pace} · ${eta}`;
+    btns = `<button class="abtn primary go" data-act="confirm">March · ${who}</button>`;
+    note = 'Tap the standard again to march, or elsewhere to move it.';
+  } else if (T.kind === 'battle') {
+    const near = nearestCity(T.ref.x, T.ref.y);
+    title = 'Join the battle'; sub = `Near ${near ? near.name : 'the road'} · ${eta}`; color = '#c23b22';
+    btns = `<div class="row2"><button class="abtn danger go" data-act="confirm">Join · ${who}</button><button class="abtn" data-act="inspect">Watch</button></div>`;
+    note = 'Tap the battle again to join it.';
+  } else if (T.kind === 'city' && T.ref.owner === ME) {
+    title = `March to ${T.ref.name}`; sub = `Camp by the walls · ${eta}`;
+    btns = `<div class="row2"><button class="abtn primary go" data-act="confirm">March · ${who}</button><button class="abtn" data-act="inspect">Open city</button></div>`;
+    note = `Tap ${T.ref.name} again to march.`;
+  } else {
+    const ref = T.ref, owner = ref.owner;
+    const name = T.kind === 'city' ? ref.name : T.kind === 'fort' ? 'the fort' : `the ${FACTIONS[owner].adj} army`;
+    title = `Attack ${name}`; color = fcss(owner);
+    sub = `${T.kind === 'city' ? `${ref.major ? 'Major city' : 'Town'} · ` : ''}${ownerName(owner)} · ${eta}`;
+    btns = (T.kind === 'city' && !seesCity(ref) ? '<div class="note">Out of sight: its defenders are unknown. Cavalry sees further.</div>' : oddsHtml(estimateOdds(arms, { kind: T.kind, ref }, 0, ME), arms.length > 1 ? 'Odds of your armies' : 'Odds of your army'))
+      + `<div class="row2"><button class="abtn danger go" data-act="confirm">⚔ Attack · ${who}</button><button class="abtn" data-act="inspect">Inspect</button></div>`;
+    if (owner >= 0 && !atWar(ME, owner)) {
+      const R = relOf(ME, owner);
+      note = `<b>You are at peace with ${FACTIONS[owner].name}:</b> attacking declares war${R.lock > GS.time ? ` and breaks the ${R.lock === PEACE_TIME ? 'truce' : 'treaty'}. No power will deal with you for ${mins(OATH_TIME)} minutes` : ''}. `;
+    }
+    note += `Tap ${T.kind === 'army' ? 'the army' : name} again to attack.`;
+  }
+  let h = headerHtml(color, title, sub, '', 'unplan') + '<div class="pb">' + btns;
+  if (note) h += `<div class="note">${note}</div>`;
+  return h + '</div>';
 }
 export function enemyArmyPanel(a) {
   let h = headerHtml(fcss(a.owner), `${FACTIONS[a.owner].adj} army · ${fmtInt(menOf(a.comp))}${starsOf(a) ? ' <span style="color:var(--gold);font-size:15px">' + '★'.repeat(starsOf(a)) + '</span>' : ''}`, `${armyStatus(a)} · ${a.stance === 'def' ? (sigOf(a.owner).testudo ? 'testudo stance' : 'defensive stance') : 'aggressive stance'}`) + '<div class="pb">';
@@ -293,7 +354,9 @@ export function renderPanel(force) {
   if (UI.selEnemy && (UI.selEnemy.dead || !seesArmy(UI.selEnemy))) UI.selEnemy = null;
   if (UI.selBattle && !UI.selBattle.done && !seesBattle(UI.selBattle)) UI.selBattle = null;
   if (UI.selFort && UI.selFort.dead) UI.selFort = null;
-  if (UI.sel.length) h = myArmyPanel(UI.sel);
+  // a planned order lapses when no selected army can take it, or its target is gone
+  if (UI.order && (!myOrderables().length || (UI.order.h && (UI.order.h.ref.dead || UI.order.h.ref.done || (UI.order.h.kind === 'army' && !seesArmy(UI.order.h.ref)))))) cancelOrder();
+  if (UI.sel.length) h = UI.order ? orderPanel(UI.order) : myArmyPanel(UI.sel);
   else if (UI.selDip != null && !GS.auto) h = dipPanel(UI.selDip);
   else if (UI.selOver) h = overviewPanel(UI.selOver);
   else if (UI.selEnemy) h = enemyArmyPanel(UI.selEnemy);

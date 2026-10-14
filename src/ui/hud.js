@@ -6,14 +6,14 @@ import { Sfx } from '../core/audio.js';
 import { CAM, projectCell } from '../render/camera.js';
 import { FACTIONS, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
 import { clock, fcss, fmt, fmtInt, fmtRate, GLYPH, IC } from './format.js';
-import { _pp, $hint, $log, clearSel, ME, UI } from './state.js';
+import { _pp, $hint, $log, clearSel, cycleArmy, idleArmies, ME, UI } from './state.js';
 import { renderPanel } from './panel.js';
 import { showOver } from './screens.js';
 import { clearSave } from '../game/save.js';
-import { battleMen, DIR, manualCam, setFollow } from './director.js';
+import { battleMen, DIR, manualCam, setFollow, togglePolitical } from './director.js';
 import { alertsHtml, computeAlerts, warsList } from './alerts.js';
 import { sampleAgo } from '../game/chronicle.js';
-import { updateTerrainColors } from '../render/terrain.js';
+import { updateTerrainColors, VIEW } from '../render/terrain.js';
 
 /* =========================================================
    HUD: resources, standings, log
@@ -74,11 +74,55 @@ export function updateHUD() {
   }
   // compared with what was last written, not with innerHTML: the browser writes some markup back differently (SVG),
   // so that comparison never matched and the box was rebuilt four times a second, its tooltips with it
+  h += `<div class="need" title="Provinces that win the war">${need} to win</div>`;   // phones: under the race rail
   if (h !== standKey) { standKey = h; $('standRows').innerHTML = h; }
   renderAlerts(GS.auto ? UI.viewF : PLAYER);
   $('btnOver').classList.toggle('on', !!UI.selOver);
+  updateDock();
 }
-export const phoneLayout = () => window.innerWidth <= 820;
+// phones held upright (narrow) or sideways (short): the compact layout with the bottom dock
+export const phoneLayout = () => window.innerWidth <= 820 || window.innerHeight <= 500;
+/* ---------- the dock: the phone's commands, at the bottom of the screen ---------- */
+export const ICO_PAUSE = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+export const ICO_PLAY = '<path d="M7 5l12 7-12 7z"/>';
+export const SPEEDS = [1, 2, 4, 8];
+export let dockKey = '';
+export function updateDock() {
+  const paused = GS.speed === 0, sp = paused ? UI.lastSpeed : GS.speed, idle = GS.auto ? 0 : idleArmies();
+  const s = Math.floor(GS.time);
+  const k = [paused, sp, idle, s, GS.auto, !!UI.selOver, VIEW.political, DIR.on].join('|');
+  if (k === dockKey) return;
+  dockKey = k;
+  $('dkPauseIco').innerHTML = paused ? ICO_PLAY : ICO_PAUSE;
+  $('dkPause').querySelector('span').textContent = paused ? 'Play' : 'Pause';
+  $('dkPause').classList.toggle('on', paused);
+  $('dkPause').setAttribute('aria-label', paused ? 'Resume the game' : 'Pause the game');
+  $('dkSpd').textContent = sp + '×';
+  $('dkSpeed').classList.toggle('paused', paused);
+  $('dkSpeed').title = `Speed ${sp}×: tap for ${SPEEDS[(SPEEDS.indexOf(sp) + 1) % SPEEDS.length]}×`;
+  $('dkClock').textContent = clock(s);
+  const b = $('dkIdle'), bt = idle ? String(idle) : '';
+  if (b.textContent !== bt) { b.textContent = bt; b.classList.toggle('hidden', !bt); }
+  $('dkArmies').title = idle ? `Next army (N): ${idle} waiting for orders` : 'Next army (N)';
+  $('dkArmies').classList.toggle('hidden', !!GS.auto);
+  $('dkFollow').classList.toggle('hidden', !GS.auto);
+  $('dkFollow').classList.toggle('on', DIR.on);
+  $('dkOver').classList.toggle('on', !!UI.selOver);
+  $('dkMap').classList.toggle('on', !!VIEW.political);
+}
+$('dock').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-dock]'); if (!b || UI.mode !== 'play') return;
+  switch (b.dataset.dock) {
+    case 'armies': cycleArmy(1); break;
+    case 'follow': Sfx.click(); setFollow(!DIR.on); break;
+    case 'pause': setSpeed(GS.speed > 0 ? 0 : UI.lastSpeed); break;
+    case 'speed': { const cur = GS.speed || UI.lastSpeed; setSpeed(SPEEDS[(SPEEDS.indexOf(cur) + 1) % SPEEDS.length]); break; }
+    case 'over': toggleOverview(); break;
+    case 'map': Sfx.click(); togglePolitical(); break;
+    case 'view': toggleMapView(); break;
+  }
+  updateDock();
+});
 /* ---------- what is on screen ----------
    Each floating panel can be switched off in the pause menu (UI.show, kept in this browser), and the eye in the
    top bar hides them all at once (UI.mapView) to leave the map clear. Hidden dispatches still count: the eye
@@ -94,7 +138,10 @@ export function applyPanels() {
   b.classList.toggle('on', !!UI.mapView);
   b.setAttribute('aria-label', UI.mapView ? 'Show the panels' : 'Hide the panels');
   b.title = UI.mapView ? 'Show the panels again (V)' : 'Map view: hide the panels (V)';
-  $('viewIco').innerHTML = UI.mapView ? EYE_OFF : EYE;
+  $('viewIco').innerHTML = $('dkViewIco').innerHTML = UI.mapView ? EYE_OFF : EYE;
+  $('dkView').classList.toggle('on', !!UI.mapView);
+  $('dkView').setAttribute('aria-label', b.getAttribute('aria-label'));
+  $('dkViewTxt').textContent = UI.mapView ? 'Show' : 'Hide';
   alertsKey = '';
   if (UI.mode === 'play' && GS.factions.length) renderAlerts(GS.auto ? UI.viewF : PLAYER);
 }
@@ -109,8 +156,8 @@ export function renderAlerts(V) {
   const el = $('alerts'), shown = panelShown('alerts');
   const list = GS.over || UI.mode !== 'play' ? [] : computeAlerts(V);
   // hidden dispatches: the eye in the top bar counts the urgent ones
-  const bad = shown ? 0 : list.filter((a) => a.sev === 'bad').length, badge = $('viewBadge'), bt = bad ? String(bad) : '';
-  if (badge.textContent !== bt) { badge.textContent = bt; badge.classList.toggle('hidden', !bt); badge.title = bt ? `${bt} urgent dispatch${bad > 1 ? 'es' : ''}` : ''; }
+  const bad = shown ? 0 : list.filter((a) => a.sev === 'bad').length, bt = bad ? String(bad) : '';
+  for (const badge of [$('viewBadge'), $('dkBadge')]) if (badge.textContent !== bt) { badge.textContent = bt; badge.classList.toggle('hidden', !bt); badge.title = bt ? `${bt} urgent dispatch${bad > 1 ? 'es' : ''}` : ''; }
   const h = shown ? alertsHtml(list, phoneLayout() ? 3 : 6) : '';
   if (h === alertsKey) return;
   alertsKey = h;
@@ -185,7 +232,7 @@ export let hintFlashT = 0;
 export function flashHint(text) { $hint.innerHTML = text; $hint.classList.remove('hidden'); hintFlashT = performance.now() + 2600; }
 export function defaultHint() {
   if (performance.now() < hintFlashT) return;
-  const t = GS.auto ? (isTouch ? '<b>Autoplay</b> · tap anything to inspect it' : '<b>Autoplay</b> · click anything to inspect it · drag to take the camera · <b>F</b> to follow') : isTouch ? 'Tap your <b>army</b>, then tap where to march · Tap a <b>city</b> to recruit or build' : 'Click your <b>army</b>, then right-click where to march or what to attack · Click a <b>city</b> to recruit or build';
+  const t = GS.auto ? (isTouch ? '<b>Autoplay</b> · tap anything to inspect it' : '<b>Autoplay</b> · click anything to inspect it · drag to take the camera · <b>F</b> to follow') : isTouch ? 'Tap your <b>army</b>, then the map: the route shows, tap again to march · Tap a <b>city</b> to recruit or build' : 'Click your <b>army</b>, then right-click where to march or what to attack · Click a <b>city</b> to recruit or build';
   if ($hint.innerHTML !== t) $hint.innerHTML = t;
 }
 

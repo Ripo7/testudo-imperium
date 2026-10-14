@@ -42,7 +42,8 @@ export default async function smoke() {
       const view = await page.evaluate(() => {
         const vis = (id) => { const el = document.getElementById(id); return !!el && el.offsetParent !== null && getComputedStyle(el).display !== 'none'; };
         document.getElementById('btnView').click();
-        const hidden = { stand: vis('standRows'), tools: vis('tools'), log: vis('log'), hint: vis('hintbar') };
+        // the tool buttons stay: under the standings on a desktop, in the dock on a phone
+        const hidden = { stand: vis('standRows'), tools: vis('tools') || vis('dock'), log: vis('log'), hint: vis('hintbar') };
         document.getElementById('btnView').click();
         return { hidden, back: vis('standRows'), stored: localStorage.getItem('testudo.mapView') };
       });

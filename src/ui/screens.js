@@ -11,7 +11,7 @@ import { crowd, CROWD_TYPES } from '../render/crowds.js';
 import { DIFFS, FACTIONS, othersOf, PLAYER, pName, setPlayer, SIG, VOICE } from '../game/data.js';
 import { initCampaign } from '../game/campaign.js';
 import { resetPathfinder } from '../game/armies.js';
-import { $log, $panel, $tip, clearSel, hidePopup, setME, SPECT, stopPlacing, UI } from './state.js';
+import { $log, $panel, $tip, clearSel, setME, SPECT, stopPlacing, UI } from './state.js';
 import { renderPanel } from './panel.js';
 import { applyPanels, defaultHint, focusOn, goTo, log, logItems, PANELS, resetCrest, updateHUD } from './hud.js';
 import { chartHover, chartLeave, renderReport, REP } from './report.js';
@@ -47,7 +47,7 @@ export function setAuto(on) {
   GS.factions[PLAYER].isPlayer = !on;
   document.body.classList.toggle('auto', on);
   if (UI.placing) stopPlacing();
-  clearSel(); hidePopup(); $tip.classList.add('hidden');
+  clearSel(); $tip.classList.add('hidden');
   UI.viewF = PLAYER;
   if (!GS.factions[PLAYER].alive) { const nx = GS.factions.find((x) => x.alive); if (nx) UI.viewF = nx.id; }
   $('btnFollow').classList.toggle('hidden', !on);
@@ -79,7 +79,7 @@ export function startCampaign(auto) {
     focusOn(cap0); CAM.td = 48;
     UI.sel = GS.armies.filter((a) => a.owner === PLAYER);
     setTimeout(() => log(`${pName()} holds <b>${MAP.provinces.filter((p) => p.owner === PLAYER).map((p) => p.name).join('</b> and <b>')}</b>. ${othersOf(PLAYER)} want the rest.`, 'info', cap0), 600);
-    setTimeout(() => log(isTouch ? 'Your army is selected: tap a neutral city nearby to see your odds and attack.' : 'Your army is selected: right-click a neutral city nearby to attack it. Hover first to see the odds.', 'info'), 1600);
+    setTimeout(() => log(isTouch ? 'Your army is selected: tap a neutral city nearby to see your odds, then tap it again to attack.' : 'Your army is selected: right-click a neutral city nearby to attack it. Hover first to see the odds.', 'info'), 1600);
   }
   updateHUD(); renderPanel(true);
   saveGame();
@@ -133,6 +133,7 @@ export function showOver() {
   screens.over.scrollTop = 0;
 }
 export function setMuteIcon() {
+  $('menuMute').textContent = Sfx.muted ? 'Sound: off' : 'Sound: on';
   $('muteIco').innerHTML = Sfx.muted
     ? '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'
     : '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>';
@@ -144,7 +145,7 @@ export function drawPowers() {
 // the pause menu's switches for the floating panels
 export function drawShowOpts() {
   $('showOpts').innerHTML = '<span>On screen</span>' + PANELS.map(([k, n]) => `<button data-show="${k}" class="${UI.show[k] !== false ? 'on' : ''}" aria-pressed="${UI.show[k] !== false}">${n}</button>`).join('')
-    + '<p>The eye in the top bar hides them all at once, to clear the map.</p>';
+    + '<p>The eye (Hide, at the bottom of a phone\'s screen) hides them all at once, to clear the map.</p>';
 }
 export function drawDiff() {
   $('diffSel').innerHTML = DIFFS.map((d, i) => `<button data-d="${i}" class="${i === UI.diff ? 'on' : ''}" title="${d.note}">${d.name}</button>`).join('')
@@ -218,8 +219,11 @@ export function initScreens() {
   rep.addEventListener('pointerdown', (e) => { hover(e); if (!(e.target.closest && e.target.closest('svg.ch'))) rep.querySelectorAll('svg.ch').forEach(chartLeave); });
   rep.addEventListener('pointerout', (e) => { const svg = e.target.closest && e.target.closest('svg.ch'); if (svg && e.pointerType === 'mouse' && !svg.contains(e.relatedTarget)) chartLeave(svg); });
   window.addEventListener('resize', () => { if (!screens.over.classList.contains('hidden')) renderReport(); });
-  $('btnHelp').addEventListener('click', () => { UI.helpSpeed = GS.speed; GS.speed = 0; showScreen('help'); });
-  $('helpClose').addEventListener('click', () => { showScreen(null); if (!GS.over) GS.speed = UI.helpSpeed || 1; });
+  $('btnHelp').addEventListener('click', () => { UI.helpFrom = null; $('helpClose').textContent = 'Back to the map'; UI.helpSpeed = GS.speed; GS.speed = 0; showScreen('help'); });
+  // from the pause menu (phones keep help and sound there), the help goes back to the menu
+  $('menuHelp').addEventListener('click', () => { Sfx.click(); UI.helpFrom = 'menu'; $('helpClose').textContent = 'Back to the menu'; showScreen('help'); screens.help.scrollTop = 0; });
+  $('menuMute').addEventListener('click', () => { Sfx.init(); Sfx.toggle(); setMuteIcon(); });
+  $('helpClose').addEventListener('click', () => { if (UI.helpFrom === 'menu') { UI.helpFrom = null; showScreen('menu'); return; } showScreen(null); if (!GS.over) GS.speed = UI.helpSpeed || 1; });
   $('btnMenu').addEventListener('click', openMenu);
   $('btnMute').addEventListener('click', () => { Sfx.init(); Sfx.toggle(); setMuteIcon(); });
   document.addEventListener('visibilitychange', () => {

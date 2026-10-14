@@ -6,7 +6,7 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 
 - `npm run dev`: dev server. `npm run build`: production build into `dist/`.
 - `npm run lint`: ESLint for mistakes only (undefined or unused names); a missing import is a runtime error that the build doesn't catch.
-- `npm test`: lints, builds, then runs `tests/run.js` (map, smoke, powers, determinism, save & resume) in headless Chromium. Run one suite with `node tests/run.js smoke` after a build.
+- `npm test`: lints, builds, then runs `tests/run.js` (map, smoke, controls, powers, determinism, save & resume) in headless Chromium. Run one suite with `node tests/run.js smoke` after a build.
 - `npm run balance -- 60`: AI-vs-AI wars, with the fog of war on (add `--nofog` for full information). Targets: each power wins 20–30%, median war 20–30 min (provinces are won whole, so wars run longer than under the old points rule), and as few wars as possible hit the 60-minute limit (about 1 in 20 does today).
 - `npm run audit -- 12`: usage count of every mechanic. If a change makes a mechanic unused or dominant, the audit shows it. Its probes in `tools/audit.js` match code text; update them when you rename that code.
 
@@ -22,6 +22,7 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 - Provinces and victory live in `game/standing.js`. A province belongs to a power only while it holds every place in it (`placesOf`: major city, towns, finished forts); otherwise it is free (`NEUTRAL`) or `DISPUTED`. `updateStanding()` recomputes it (`P.owner`, `P.holders`), records changes in the chronicle and bumps `PROV.version`, which repaints the map from the frame loop. Victory is `STAND.need` provinces (60%). Settlement points (`F.pts`, `F.share`) only drive overstretch.
 - Balance knobs that can be changed at run time (for same-seed experiments through `window.__T`): `AI_PROV` (ai.js), `ENDGAME` (diplomacy.js), `RIVALRY` (data.js), `FAIR` (standing.js).
 - The record of the war lives in `game/chronicle.js`: events (`GS.chron`), samples of every power's points and men (`GS.hist`) and totals (`GS.fstats`). It is simulation state, so record from the simulation (never from UI hooks) and keep it deterministic. The Overview (`ui/overview.js`) and the end-of-war report (`ui/report.js`) only read it.
+- Phones (`phoneLayout()`: at most 820 px wide, or 500 px tall when held sideways) get the compact HUD: a top strip, the dock (`#dock`, wired in `ui/hud.js`) and the panel as a sheet. On touch screens an order is planned by a first tap and given by a second (`UI.order`, `planOrder`/`confirmOrder` in `ui/state.js`, the standard in `ui/labels.js`); a long press adds an army to the selection or inspects. Mouse orders stay immediate (right-click).
 - Fog of war lives in `game/sight.js`. Every power has a sight grid, updated inside `simStep`. The AI only uses what it sees (`knowsArmy`, `cityEstimate`, `estimateOdds(..., view)`). On screen, `seesArmy`, `seesBattle` and `seesCity` follow `viewer()`: the player's power, or the followed power in autoplay.
 
 ## Behaviour to preserve
