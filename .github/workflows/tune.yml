@@ -1,0 +1,168 @@
+name: Tune the balance
+
+# Run it from the Actions tab (Run workflow). The tuner (tools/tune.js) looks for better values with the battle and
+# economy labs, then evens out the powers' wins with rounds of AI wars; the result is then checked on wars it never
+# played, spread over parallel jobs. Propose: a report to read (the run's summary and its artifact). Apply: if the
+# result does better, the tests run on it and a pull request brings the new balance.js.
+# Opening that pull request needs Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests".
+on:
+  workflow_dispatch:
+    inputs:
+      steps:
+        description: What to tune
+        type: choice
+        options: [fast and fair, fast, fair, measure only]
+        default: fast and fair
+      mode:
+        description: Propose (a report) or apply (a pull request)
+        type: choice
+        options: [propose, apply]
+        default: propose
+      groups:
+        description: What the fast step may change
+        default: units,elite,combat,buildings
+      gens:
+        description: Generations of the fast search
+        default: '80'
+      rounds:
+        description: Rounds of wars for the powers' fairness
+        default: '4'
+      wars:
+        description: Wars per fairness round
+        default: '400'
+      validate:
+        description: Wars to check the result (before and after each)
+        default: '1600'
+      shards:
+        description: Parallel jobs for the check
+        default: '16'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      per: ${{ steps.plan.outputs.per }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # the labs need nothing but Node: no npm install
+      - name: Tune
+        run: |
+          mkdir -p out/tune
+          case "${{ inputs.steps }}" in
+            "fast and fair") STEPS="fast fair" ;;
+            "fast") STEPS="fast" ;;
+            "fair") STEPS="fair" ;;
+            *) STEPS="" ;;
+          esac
+          if [ -n "$STEPS" ]; then
+            node tools/tune.js $STEPS --validate 0 --groups "${{ inputs.groups }}" --gens "${{ inputs.gens }}" \
+              --rounds "${{ inputs.rounds }}" --wars "${{ inputs.wars }}" --out out/tune
+          else
+            echo '{}' > out/tune/proposal.json
+          fi
+      - id: plan
+        name: Split the check over the shards
+        run: |
+          S=${{ inputs.shards }}; V=${{ inputs.validate }}
+          echo "shards=$(node -e "console.log(JSON.stringify([...Array($S).keys()]))")" >> "$GITHUB_OUTPUT"
+          echo "per=$(( (V + S - 1) / S ))" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proposal
+          path: out/tune
+
+  check:
+    needs: tune
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        shard: ${{ fromJSON(needs.tune.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: proposal
+          path: out/tune
+      - name: Validation wars, before and after
+        run: |
+          N=${{ needs.tune.outputs.per }}; FROM=$(( 100000 + ${{ matrix.shard }} * N ))
+          mkdir -p out/records
+          node tools/lab.js wars $N --from $FROM --records out/records/before-${{ matrix.shard }}.json > /dev/null
+          node tools/lab.js wars $N --from $FROM --params out/tune/proposal.json --records out/records/after-${{ matrix.shard }}.json > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: records-${{ matrix.shard }}
+          path: out/records
+
+  report:
+    needs: [tune, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: proposal
+          path: out/tune
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: records-*
+          path: out/records
+          merge-multiple: true
+      - name: Report
+        run: |
+          BEFORE=$(ls out/records/before-*.json | paste -sd, -)
+          AFTER=$(ls out/records/after-*.json | paste -sd, -)
+          APPLY=""; [ "${{ inputs.mode }}" = "apply" ] && APPLY="--apply"
+          node tools/tune.js report --proposal out/tune/proposal.json --before "$BEFORE" --after "$AFTER" --out out/report $APPLY
+          cat out/report/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f out/tune/report.html ]; then cp out/tune/report.html out/report/search.html; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: out/report
+      - name: Applied?
+        id: verdict
+        if: inputs.mode == 'apply'
+        run: echo "applied=$(node -e "console.log(require('./out/report/verdict.json').applied)")" >> "$GITHUB_OUTPUT"
+      - if: steps.verdict.outputs.applied == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Test the new values
+        if: steps.verdict.outputs.applied == 'true'
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test
+      - name: Open the pull request
+        if: steps.verdict.outputs.applied == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="tune/run-${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add src/game/balance.js
+          git commit -m "Tuned balance (run ${{ github.run_id }})" -m "$(cat out/report/summary.md)"
+          git push origin "$BRANCH"
+          gh pr create --base "${{ github.ref_name }}" --head "$BRANCH" --title "Tuned balance (run ${{ github.run_id }})" \
+            --body "$(cat out/report/summary.md; echo; echo "The full report (report.html) is in the run's artifacts: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")"

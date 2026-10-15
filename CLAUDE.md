@@ -6,8 +6,9 @@ Browser RTS in plain JavaScript ES modules, built with Vite, rendered with three
 
 - `npm run dev`: dev server. `npm run build`: production build into `dist/`.
 - `npm run lint`: ESLint for mistakes only (undefined or unused names); a missing import is a runtime error that the build doesn't catch.
-- `npm test`: lints, builds, then runs `tests/run.js` (map, smoke, controls, powers, determinism, headless, save & resume) in headless Chromium. Run one suite with `node tests/run.js smoke` after a build.
+- `npm test`: lints, builds, then runs `tests/run.js` (map, params, smoke, controls, powers, determinism, headless, save & resume) in headless Chromium. Run one suite with `node tests/run.js smoke` after a build.
 - `npm run balance -- 60`: AI-vs-AI wars, with the fog of war on (add `--nofog` for full information). Targets: each power wins 20–30%, median war 20–30 min (provinces are won whole, so wars run longer than under the old points rule), and as few wars as possible hit the 60-minute limit (about 1 in 20 does today).
+- `npm run lab` (add `-- wars 200` for AI wars in Node, on every core): the battle, economy and war labs and their scorecard against `tools/lab/targets.js`. `npm run tune`: the tuner (`tools/tune.js`): fast (units, elites, combat, buildings with the two fast labs), then fair (one perk per power, rounds of wars), then a check on unseen seeds; `--apply` writes `balance.js` only if it does better. `npm run params -- list|set|diff|check`. The *Tune the balance* GitHub workflow runs the same at scale and can open a pull request.
 - `npm run audit -- 12`: usage count of every mechanic. If a change makes a mechanic unused or dominant, the audit shows it. Its probes in `tools/audit.js` match code text; update them when you rename that code.
 
 ## Module rules

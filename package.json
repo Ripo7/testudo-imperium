@@ -14,6 +14,9 @@
     "test": "eslint . && vite build && node tests/run.js",
     "balance": "vite build && node tools/balance.js",
     "audit": "node tools/audit.js",
+    "params": "node tools/params.js",
+    "lab": "node tools/lab.js",
+    "tune": "node tools/tune.js",
     "lint": "eslint ."
   },
   "dependencies": {
