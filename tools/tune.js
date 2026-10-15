@@ -79,8 +79,10 @@ export async function fastSearch({ groups = FAST_GROUPS, gens = 80, workers = co
 }
 
 /**
- * Fair: rounds of wars on fresh seeds; after each, every power whose share of the wins is out of band has its lever
- * moved in proportion to the gap (gain: the share of the lever's range moved for a gap of 0.1).
+ * Fair: rounds of wars on fresh seeds. After each, a power's lever moves only when its share of the wins is out of
+ * band beyond doubt (its 95% interval misses the band entirely): with a few hundred wars a share is only known to a
+ * few points, and moving on noise would chase it. The move is in proportion to the gap (gain: the share of the
+ * lever's range moved for a gap of 0.1), and shrinks round after round.
  */
 export async function fairLoop({ x, rounds = 4, wars = 120, workers = cores(), gain = 1, from = 0, log = console.log } = {}) {
   const T = TARGETS.wars.winShare.band, levers = TARGETS.levers, hist = [];
@@ -88,21 +90,22 @@ export async function fairLoop({ x, rounds = 4, wars = 120, workers = cores(), g
   for (let k = 0; k < rounds; k++) {
     const R = await labWars(wars, { params: x, workers, from: from + k * wars });
     const S = warSummary(R);
-    hist.push({ levers: levers.map(([id]) => x[id]), share: S.share, ci: S.ci, median: S.median, unfinished: S.unfinished });
-    log(`fair: round ${k + 1}, wins ${S.share.map((s) => `${Math.round(s * 100)}%`).join(' / ')}, median ${S.median.toFixed(1)} min`);
-    if (S.share.every((s) => s >= T[0] && s <= T[1])) break;
-    if (k === rounds - 1) break;
+    const sure = S.ci.map(([a, b]) => (b < T[0] ? -1 : a > T[1] ? 1 : 0));   // -1: surely too few wins, 1: surely too many
+    hist.push({ levers: levers.map(([id]) => x[id]), share: S.share, ci: S.ci, median: S.median, unfinished: S.unfinished, moved: [] });
+    log(`fair: round ${k + 1}, wins ${S.share.map((s, f) => `${Math.round(s * 100)}%${sure[f] ? (sure[f] > 0 ? '↑' : '↓') : ''}`).join(' / ')} (${wars} wars, ±${Math.round((S.ci[0][1] - S.ci[0][0]) * 50)} points), median ${S.median.toFixed(1)} min`);
+    if (!sure.some(Boolean) || k === rounds - 1) break;
+    const step = gain / (1 + 0.5 * k);
     levers.forEach(([id, dir], f) => {
-      const P = PARAM.get(id), s = S.share[f];
-      const gap = s < T[0] ? s - T[0] : s > T[1] ? s - T[1] : 0;
-      if (!gap) return;
-      const u = norm(P, x[id]) - dir * gain * gap / 0.1 * 0.1;   // a gap of 0.1 moves the lever by gain x 10% of its range
-      x[id] = denorm(P, u);
+      if (!sure[f]) return;
+      const P = PARAM.get(id), s = S.share[f], gap = s < T[0] ? s - T[0] : s - T[1];
+      const before = x[id];
+      x[id] = denorm(P, norm(P, x[id]) - dir * step * gap);   // a gap of 0.1 moves the lever by step x 10% of its range
+      hist[k].moved.push(id);
+      log(`fair: ${id} ${before} -> ${x[id]}`);
     });
   }
   return { x, hist };
 }
-// the full picture for a set of values: both fast labs and n wars on seeds the tuner never saw
 export const VALIDATION_FROM = 100000;   // validation wars are played from this seed on: seeds the tuning never plays
 export async function measure(x, { wars = 240, workers = cores(), from = VALIDATION_FROM, records = null } = {}) {
   resetParams(); applyParams(x);
