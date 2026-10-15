@@ -34,8 +34,9 @@ export function computeCityYield(c) {
   c.yield = y;
 }
 
-export function initCampaign(seed) {
-  setMap(generateMap(seed));
+// gen: the map generator's version (map/generate.js MAP_GEN); a save made on an older one rebuilds its map with it
+export function initCampaign(seed, gen) {
+  setMap(generateMap(seed, gen));
   Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, fog: false, diff: 1, envoy: null,
     fstats: fillStats(), chron: [], hist: [], rivalF: -1, peaceT: 0, sightT: 0 });
   // every pair of powers, in a fixed order (relOf would otherwise create them as they are first read, the screen's

@@ -1,5 +1,5 @@
 // Map generation is pure JavaScript (no three.js, no DOM), so it is tested directly in Node.
-import { generateMap, N8 } from '../src/map/generate.js';
+import { generateMap, MAP_GEN, N8 } from '../src/map/generate.js';
 import { check } from './helpers.js';
 
 export default async function map() {
@@ -27,4 +27,10 @@ export default async function map() {
     check(closed > 0 && bridges > 0, `seed ${seed}: ${closed} river cells need a bridge, ${bridges} bridges`);
     console.log(`  seed ${seed}: ${M.W}x${M.H}, ${M.provinces.length} provinces, ${M.cities.length} cities, ${Date.now() - t0} ms`);
   }
+  // continents the first version of the generator never finished (about one seed in twenty)
+  const t0 = Date.now();
+  for (const seed of [792233598, 300004973, 230000977]) generateMap(seed);
+  check(Date.now() - t0 < 15000, `three continents that used to hang are made in ${Date.now() - t0} ms`);
+  const v1 = generateMap(4242, 1), v2 = generateMap(4242);
+  check(v1.gen === 1 && v2.gen === MAP_GEN && v1.landCount === v2.landCount, 'the first version of the generator is still there, for older saves');
 }

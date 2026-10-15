@@ -64,8 +64,14 @@ export const PROV_B = ['tania', 'gica', 'ria', 'donia', 'nia', 'cia', 'tica', 'l
 export const CITY_A = ['Bur', 'Lug', 'Med', 'Ver', 'Aug', 'Col', 'Nar', 'Tol', 'Vin', 'Sal', 'Tar', 'Ebur', 'Cam', 'Lon', 'Mog', 'Arel', 'Nem', 'Gen', 'Ant', 'Ost', 'Pal', 'Cor', 'Sag', 'Leuc', 'Bri', 'Cast', 'Dur', 'Gad', 'Hel', 'Ilu', 'Mas', 'Nov', 'Pis', 'Rav', 'Sir', 'Tib', 'Ulp', 'Vol', 'Alb', 'Ber', 'Cel', 'Dam', 'Lept', 'Uti', 'Hip', 'Cyr', 'Myl', 'Pel'];
 export const CITY_B = ['dunum', 'igala', 'iolanum', 'ona', 'usta', 'onia', 'bo', 'osa', 'dobona', 'acum', 'ium', 'entum', 'ula', 'is', 'aco', 'ensis', 'ana', 'oria', 'ica', 'ae', 'ara', 'ilia', 'eia', 'opolis'];
 
-export function generateMap(seed) {
+/* The generator's version. Version 1 compared 32-bit stored distances with 64-bit new ones while it shared the land
+   out between the provinces, so a cell could be claimed again and again: slow, and on some continents (about one
+   seed in twenty) without end. Version 2 compares them as stored. The two give different borders, so a save keeps
+   the version its map was made with (game/save.js) and an older one is rebuilt with version 1. */
+export const MAP_GEN = 2;
+export function generateMap(seed, gen = MAP_GEN) {
   const W = MW, H = MH, N = W * H;
+  const f32 = gen >= 2 ? Math.fround : (v) => v;
   const r = rng32(seed * 7919 + 17);
   const nA = makePerlin(seed + 1), nB = makePerlin(seed + 2), nC = makePerlin(seed + 3), nM = makePerlin(seed + 4), nW = makePerlin(seed + 5);
   const elev = new Float32Array(N), moist = new Float32Array(N), temp = new Float32Array(N);
@@ -301,7 +307,7 @@ export function generateMap(seed) {
     for (const [dx, dy] of N8) {
       const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const n = ny * W + nx; if (!passable(n)) continue;
-      const nd = d0 + cost[n] * (dx && dy ? 1.414 : 1) + (river[n] ? 3 : 0);
+      const nd = f32(d0 + cost[n] * (dx && dy ? 1.414 : 1) + (river[n] ? 3 : 0));
       if (nd < pdist[n]) { pdist[n] = nd; prov[n] = prov[c]; ph.push(nd, n); }
     }
   }
@@ -390,9 +396,9 @@ export function generateMap(seed) {
   const roads = buildRoads(W, H, cost, cities, provinces);
   const road = new Uint8Array(N), bridge = new Uint8Array(N);
   for (const R of roads) for (const n of R.cells) { road[n] = 1; if (river[n] && elev[n] >= 0) bridge[n] = 1; }
-  const { move, ford } = movementCost(W, H, biome, river, elev, road, cities);
+  const { move, ford } = movementCost(W, H, biome, river, elev, road, cities, f32);
 
-  return { W, H, seed, elev, moist, temp, biome, river, rivers, cost, prov, provinces, cities, ocean, landCount, eHill, eMount, eSnow, roads, road, bridge, move, ford };
+  return { W, H, seed, gen, elev, moist, temp, biome, river, rivers, cost, prov, provinces, cities, ocean, landCount, eHill, eMount, eSnow, roads, road, bridge, move, ford };
 }
 
 /* ---------- roads: A* between neighbouring cities, sharing segments ----------
@@ -458,7 +464,7 @@ export function buildRoads(W, H, cost, cities, provinces) {
    Rivers can only be crossed on a bridge, or waded at a ford on their narrow upper course. */
 export const MOVE = { road: 0.5, roadClimb: 0.15, ford: 3, fordWidth: 1 };
 export const TERRAIN_MOVE = [Infinity, Infinity, 1.1, 1, 1, 2.2, 1.4, 1.8, 4.5, Infinity, Infinity];   // by BIOME index
-export function movementCost(W, H, biome, river, elev, road, cities) {
+export function movementCost(W, H, biome, river, elev, road, cities, f32 = Math.fround) {
   const N = W * H, move = new Float32Array(N), ford = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
     const b = biome[i];
@@ -508,7 +514,7 @@ export function movementCost(W, H, biome, river, elev, road, cities) {
         const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const n = ny * W + nx, b = biome[n];
         if (b <= BIOME.SEA || b === BIOME.LAKE) continue;
-        const nd = d0 + (ok(n) ? move[n] : b === BIOME.SNOW ? 12 : 8);
+        const nd = f32(d0 + (ok(n) ? move[n] : b === BIOME.SNOW ? 12 : 8));
         if (nd < g[n]) { g[n] = nd; came[n] = c; hp.push(nd, n); }
       }
     }

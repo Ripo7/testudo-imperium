@@ -21,7 +21,7 @@ export function snapshot() {
     return T.ref.dead ? null : { k: T.kind, id: T.ref.id };
   };
   return {
-    v: 1, mv: MOVE_RULES, seed: MAP.seed, print: mapPrint(), at: Date.now(),
+    v: 1, mv: MOVE_RULES, mg: MAP.gen, seed: MAP.seed, print: mapPrint(), at: Date.now(),
     gs: {
       time: GS.time, auto: GS.auto, player: PLAYER, rel: GS.rel, diff: GS.diff, fog: !!GS.fog, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT, chron: GS.chron, hist: GS.hist, rng: GS.rng, peaceT: GS.peaceT || 0, sightT: GS.sightT || 0,
       envoy: GS.envoy || null,
@@ -43,7 +43,7 @@ export function snapshot() {
   };
 }
 export function restoreSnapshot(S) {
-  initCampaign(S.seed);
+  initCampaign(S.seed, S.mg || 1);   // saves from before the generator had versions: its first version
   if (mapPrint() !== S.print || S.cities.length !== MAP.cities.length) throw new Error('This save belongs to a different map.');
   const g = S.gs;
   Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, fog: !!g.fog, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: fillStats(g.fstats), chron: g.chron || [], hist: g.hist || [], checkT: g.checkT || 1, peaceT: g.peaceT || 0, envoy: g.envoy || null, armies: [], forts: [], battles: [], over: null });
