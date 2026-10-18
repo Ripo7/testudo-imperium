@@ -1,12 +1,11 @@
 import { holdsIn, placesOf, SET_W, STAND } from './standing.js';
-import { GS, MAP, menOf, ownerName, rnd } from './state.js';
-import { $ } from '../core/util.js';
-import { Sfx } from '../core/audio.js';
-import { FACTIONS, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PEACE_WILL, PLAYER, pName, REVOLT_RATE, RIVALRY, TREATY_TIME, TRIBUTE_FLOOR } from './data.js';
+import { GS, MAP, menOf, rnd } from './state.js';
+import {
+  DIPLO, ECON, FACTIONS, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PLAYER, pName, RIVALRY, TREATY_TIME,
+} from './data.js';
 import { captureCity, powerOf, roundComp } from './battles.js';
-import { fcss } from '../ui/format.js';
-import { ME, UI } from '../ui/state.js';
-import { log } from '../ui/hud.js';
+import { HOOKS } from './hooks.js';
+import { BALANCE } from './balance.js';
 import { clockStr } from './save.js';
 import { recordPeace, recordWar } from './chronicle.js';
 
@@ -27,7 +26,7 @@ export function armyPower(f) { let p = 0; for (const a of GS.armies) if (!a.dead
 // nearWin: within this many provinces of victory a power won't make peace with anyone behind it
 // claim: how much less ready for peace a power is for every province it means to finish that the other still holds part of;
 // claimWar: how much likelier it then declares war
-export const ENDGAME = { pressOn: 0.5, warRatio: 0.75, warChance: 3, dispute: 3, nearWin: 3, claim: 0.15, claimWar: 1 };
+export const ENDGAME = BALANCE.diplomacy.endgame;
 // how many provinces f shares with g while holding most of their places (f's claims on g)
 export function claimsAgainst(f, g) {
   let n = 0;
@@ -40,19 +39,15 @@ export function claimsAgainst(f, g) {
 }
 export const lastTwo = () => GS.factions.filter((X) => X.alive).length === 2;
 export const mins = (sec) => (sec % 60 === 30 ? Math.floor(sec / 60) + '½' : String(Math.round(sec / 60)));
-export const fname = (f) => `<b style="color:${fcss(f)}">${ownerName(f)}</b>`;
-export function declareWar(f, g, quiet) {
+export function declareWar(f, g) {
   const R = relOf(f, g);
   if (R.war) return;
   const broke = R.lock > GS.time;
   Object.assign(R, { war: true, since: GS.time, lock: 0, w: { [f]: 0, [g]: 0 }, sc: { [f]: 0, [g]: 0 } });
   if (broke) GS.factions[f].oath = GS.time + OATH_TIME;
   recordWar(f, g, broke);
-  if (UI.envoy && (UI.envoy.g === f || UI.envoy.g === g)) hideEnvoy();
-  if (quiet) return;
-  const mine = !GS.auto && (f === ME || g === ME);
-  log(`${fname(f)} ${broke ? 'breaks its treaty and ' : ''}declares war on ${fname(g)}.`, mine ? 'bad' : 'info');
-  if (mine && g === ME) Sfx.horn();
+  if (GS.envoy && (GS.envoy.g === f || GS.envoy.g === g)) endEnvoy();
+  HOOKS.warDeclared(f, g, broke);
 }
 export function makePeace(f, g, dur, payer, gold) {
   const R = relOf(f, g);
@@ -71,10 +66,10 @@ export function makePeace(f, g, dur, payer, gold) {
     const o = a.target.ref && a.target.ref.owner;
     if ((a.target.kind === 'army' || a.target.kind === 'city' || a.target.kind === 'fort') && (o === f || o === g) && o !== a.owner) { a.target = null; a.path = null; if (a.state === 'move') a.state = 'idle'; a.aiCommit = 0; }
   }
-  if (UI.envoy && (UI.envoy.g === f || UI.envoy.g === g)) hideEnvoy();
-  log(`${fname(f)} and ${fname(g)} make peace${paid ? ` · ${ownerName(payer)} pays ${paid} gold` : ''}.`, !GS.auto && (f === ME || g === ME) ? 'good' : 'info');
+  if (GS.envoy && (GS.envoy.g === f || GS.envoy.g === g)) endEnvoy();
+  HOOKS.peaceMade(f, g, payer, paid);
 }
-// how ready power f is to end its war with g (above PEACE_WILL: wants peace)
+// how ready power f is to end its war with g (above DIPLO.peaceWill: wants peace)
 export function peaceWill(f, g) {
   const F = GS.factions[f], G = GS.factions[g], R = relOf(f, g);
   const r = (armyPower(f) + 50) / (armyPower(g) + 50);
@@ -90,7 +85,7 @@ export function peaceWill(f, g) {
   if (R.lc && R.lc[f] > GS.time - 60) w -= 0.3;             // still taking cities: press on
   return w;
 }
-export const tributeFor = (will) => Math.min(600, Math.max(50, Math.round((PEACE_WILL - will) * 1200 / 25) * 25));
+export const tributeFor = (will) => Math.min(600, Math.max(50, Math.round((DIPLO.peaceWill - will) * 1200 / 25) * 25));
 export const wearyWord = (w) => (w < 0.25 ? 'fresh' : w < 0.5 ? 'tiring' : w < 0.8 ? 'war-weary' : 'exhausted');
 // the player offers peace to g: { ok, gold (the player pays), why }
 export function peaceAnswer(g) {
@@ -99,17 +94,17 @@ export function peaceAnswer(g) {
   if (P.oath > GS.time) return { ok: false, why: `${G.name} does not trust an oath-breaker.` };
   if (GS.time - R.since < 150) return { ok: false, why: `The war has only begun: ${G.name} wants to fight it out first.` };
   const w = peaceWill(g, PLAYER);
-  if (w > PEACE_WILL) return { ok: true, gold: 0, why: `${G.name} is ready for peace.` };
-  if (w > TRIBUTE_FLOOR) return { ok: true, gold: tributeFor(w), why: `${G.name} will make peace for a tribute.` };
+  if (w > DIPLO.peaceWill) return { ok: true, gold: 0, why: `${G.name} is ready for peace.` };
+  if (w > DIPLO.tributeFloor) return { ok: true, gold: tributeFor(w), why: `${G.name} will make peace for a tribute.` };
   return { ok: false, why: GS.time - R.since < 150 ? `The war has only begun: ${G.name} wants to fight it out first.` : P.vshare > RIVALRY.gangAt && G.vshare < P.vshare ? `${G.name} sees ${pName()} as the threat that must be stopped.` : `${G.name} thinks it is winning and refuses.` };
 }
+// the player sues for peace with g: { ok, msg }
 export function suePeace(g) {
   const a = peaceAnswer(g), P = GS.factions[PLAYER];
-  if (!a.ok) { UI.dipMsg = a.why; return false; }
-  if (a.gold > P.res.gold) { UI.dipMsg = `${a.why} It asks <b>${a.gold} gold</b>, more than the treasury holds.`; return false; }
+  if (!a.ok) return { ok: false, msg: a.why };
+  if (a.gold > P.res.gold) return { ok: false, msg: `${a.why} It asks <b>${a.gold} gold</b>, more than the treasury holds.` };
   makePeace(PLAYER, g, TREATY_TIME, a.gold ? PLAYER : null, a.gold);
-  UI.dipMsg = `Peace with ${FACTIONS[g].name}${a.gold ? ` for ${a.gold} gold` : ''}. The treaty binds both sides for ${mins(TREATY_TIME)} minutes.`;
-  return true;
+  return { ok: true, msg: `Peace with ${FACTIONS[g].name}${a.gold ? ` for ${a.gold} gold` : ''}. The treaty binds both sides for ${mins(TREATY_TIME)} minutes.` };
 }
 // at peace: will g renew the treaty with the player?
 export function treatyAnswer(g) {
@@ -121,12 +116,12 @@ export function treatyAnswer(g) {
   if (warsOf(g) === 0 && r > 1.9 - 0.6 * G.aggr) return { ok: false, why: `${G.name} has its eye on your lands and refuses.` };
   return { ok: true, why: `${G.name} agrees.` };
 }
+// the player asks g to renew their treaty: { ok, msg }
 export function renewTreaty(g) {
   const a = treatyAnswer(g), R = relOf(PLAYER, g);
-  if (!a.ok) { R.nd[g] = GS.time + 45; UI.dipMsg = a.why; return false; }
+  if (!a.ok) { R.nd[g] = GS.time + 45; return { ok: false, msg: a.why }; }
   R.lock = Math.max(R.lock, GS.time) + PACT_TIME;
-  UI.dipMsg = `${FACTIONS[g].name} renews the treaty: it now binds for ${clockStr(R.lock - GS.time)}.`;
-  return true;
+  return { ok: true, msg: `${FACTIONS[g].name} renews the treaty: it now binds for ${clockStr(R.lock - GS.time)}.` };
 }
 // an AI power looks for a war worth fighting
 export function aiConsiderWar(F) {
@@ -163,7 +158,8 @@ export function dipTick() {
     }
   }
   revolts();
-  if (UI.envoy && (GS.time > UI.envoy.until || !atWar(PLAYER, UI.envoy.g) || GS.auto)) { if (GS.time > UI.envoy.until) relOf(PLAYER, UI.envoy.g).nd[PLAYER] = GS.time + 60; hideEnvoy(); }
+  const E = GS.envoy;
+  if (E && (GS.time > E.until || !atWar(PLAYER, E.g) || GS.auto)) { if (GS.time > E.until) relOf(PLAYER, E.g).nd[PLAYER] = GS.time + 60; endEnvoy(); }
   if (GS.time < PEACE_TIME) return;
   const ai = GS.factions.filter((F) => F.alive && !F.isPlayer);
   for (const F of ai) { F.dipT = (F.dipT == null ? rnd() * 10 : F.dipT) - 1; if (F.dipT <= 0) { F.dipT = 8 + rnd() * 6; aiConsiderWar(F); } }
@@ -175,26 +171,26 @@ export function dipTick() {
     const f = ai[i].id, g = ai[j].id;
     if (!atWar(f, g)) continue;
     const wf = peaceWill(f, g), wg = peaceWill(g, f);
-    if (wf > PEACE_WILL && wg > PEACE_WILL) makePeace(f, g, TREATY_TIME);
-    else if (wf > PEACE_WILL && wg > TRIBUTE_FLOOR && ai[i].res.gold >= tributeFor(wg) * 0.6) makePeace(f, g, TREATY_TIME, f, tributeFor(wg));
-    else if (wg > PEACE_WILL && wf > TRIBUTE_FLOOR && ai[j].res.gold >= tributeFor(wf) * 0.6) makePeace(f, g, TREATY_TIME, g, tributeFor(wf));
+    if (wf > DIPLO.peaceWill && wg > DIPLO.peaceWill) makePeace(f, g, TREATY_TIME);
+    else if (wf > DIPLO.peaceWill && wg > DIPLO.tributeFloor && ai[i].res.gold >= tributeFor(wg) * 0.6) makePeace(f, g, TREATY_TIME, f, tributeFor(wg));
+    else if (wg > DIPLO.peaceWill && wf > DIPLO.tributeFloor && ai[j].res.gold >= tributeFor(wf) * 0.6) makePeace(f, g, TREATY_TIME, g, tributeFor(wf));
   }
-  // AI envoys come to the player
-  if (!GS.auto && !UI.envoy && GS.factions[PLAYER].alive && UI.mode === 'play') {
+  // AI envoys come to the player (a human one: not while the AI runs the player's power)
+  if (!GS.auto && !GS.envoy && GS.factions[PLAYER].alive && GS.factions[PLAYER].isPlayer) {
     for (const G of ai) {
       const R = relOf(PLAYER, G.id);
       if (!atWar(PLAYER, G.id) || (R.nd[PLAYER] || 0) > GS.time) continue;
       const w = peaceWill(G.id, PLAYER);
-      if (w <= PEACE_WILL + 0.1) continue;
+      if (w <= DIPLO.peaceWill + 0.1) continue;
       const gold = w > 0.75 && (R.sc[PLAYER] || 0) > (R.sc[G.id] || 0) + 3 ? Math.min(300, Math.round((w - 0.6) * 600 / 25) * 25 + 50) : 0;
-      showEnvoy(G.id, gold);
+      sendEnvoy(G.id, gold);
       break;
     }
   }
 }
 // disloyal cities of a stretched empire, with no garrison and no temple, may rise in revolt
 // chance per second that a disloyal city with no garrison and no temple revolts
-export const revoltRisk = (c, F) => (0.5 - c.loyal) * REVOLT_RATE * (F.stretch < 0.995 ? 1 + (1 - F.stretch) * 5 : 0.5);
+export const revoltRisk = (c, F) => (0.5 - c.loyal) * ECON.revolt * (F.stretch < 0.995 ? 1 + (1 - F.stretch) * 5 : 0.5);
 export function revolts() {
   for (const c of MAP.cities) {
     if (c.owner < 0 || c.capital || c.loyal >= 0.5 || hasImp(c, 'temple') || (c.battle && !c.battle.done)) continue;
@@ -203,12 +199,6 @@ export function revolts() {
     if (rnd() < revoltRisk(c, F)) { captureCity(c, NEUTRAL); c.militia = c.militiaMax * 0.6; c.loyal = 1; }
   }
 }
-export function showEnvoy(g, gold) {
-  UI.envoy = { g, gold, until: GS.time + 40 };
-  const G = GS.factions[g];
-  $('envoy').innerHTML = `<i style="background:${G.css}"></i><span><b>${G.name}</b> sends envoys: peace${gold ? `, and <b>${gold} gold</b> for ${pName()}` : ''}. The treaty would bind for ${mins(TREATY_TIME)} minutes.</span><button class="abtn primary" data-env="yes">Accept</button><button class="abtn" data-env="no">Refuse</button>`;
-  $('envoy').classList.remove('hidden');
-  log(`Envoys from ${fname(g)} ask for peace.`, 'info');
-  Sfx.horn();
-}
-export function hideEnvoy() { UI.envoy = null; const e = document.getElementById('envoy'); if (e) e.classList.add('hidden'); }
+// envoys of g offer the player peace (gold: what g pays for it) for 40 seconds
+export function sendEnvoy(g, gold) { GS.envoy = { g, gold, until: GS.time + 40 }; HOOKS.envoy(GS.envoy); }
+export function endEnvoy() { GS.envoy = null; HOOKS.envoy(null); }

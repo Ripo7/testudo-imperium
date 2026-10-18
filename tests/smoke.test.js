@@ -39,6 +39,18 @@ export default async function smoke() {
       check(r.fog.on && r.fog.hidden > 0 && r.fog.unknownCity, `[${label}] fog of war hides ${r.fog.hidden} of ${r.fog.enemies} enemy armies and unseen defenders`);
       check(r.record.battles > 5 && r.record.samples >= Math.floor(r.time / 10) && r.record.raised > 0, `[${label}] the war is recorded (${r.record.events} events, ${r.record.samples} samples)`);
       await page.waitForTimeout(800);   // a few real frames with the renderer on
+      // close-up models: an army near the camera is drawn with the detailed spearmen, and with the light ones from afar
+      await page.waitForFunction(() => !!window.__T.MODELS.spear, null, { timeout: 60000 });
+      const lod = await page.evaluate(() => {
+        const T = window.__T, a = T.GS.armies.find((x) => !x.dead && x.comp.spear > 0 && T.seesArmy(x));
+        if (!a) return null;
+        const w = T.cellToWorld(a.x, a.y), cam = { ...T.CAM };
+        const look = (d) => { T.CAM.x = T.CAM.tx = w.x; T.CAM.z = T.CAM.tz = w.z; T.CAM.d = T.CAM.td = d; T.applyCamera(); T.updateCrowds(T.GS.time); return { near: T.crowdNear.spear.count, far: T.crowd.spear.count }; };
+        const close = look(8), high = look(120);
+        Object.assign(T.CAM, cam); T.applyCamera();
+        return { tris: T.MODELS.spear.index.count / 3, close, high };
+      });
+      check(lod && lod.close.near > 0 && lod.high.near === 0 && lod.high.far >= lod.close.near, `[${label}] spearmen up close use the detailed model (${lod && lod.tris} triangles, ${lod && lod.close.near} near the camera) and the light one from high up`);
       const view = await page.evaluate(() => {
         const vis = (id) => { const el = document.getElementById(id); return !!el && el.offsetParent !== null && getComputedStyle(el).display !== 'none'; };
         document.getElementById('btnView').click();
@@ -49,7 +61,7 @@ export default async function smoke() {
       });
       check(!view.hidden.stand && view.hidden.tools && !view.hidden.log && !view.hidden.hint && view.back && view.stored === 'false', `[${label}] the eye hides the panels (keeping the tool buttons) and brings them back`);
       // the end of the war: the report with its charts, ledger, wars and key moments
-      await page.evaluate(() => { const T = window.__T; T.setNoRender(true); if (!T.GS.over) T.endCampaign(true); });   // the renderer off: software WebGL frames are slow
+      await page.evaluate(() => { const T = window.__T; T.setNoRender(true); if (!T.GS.over) T.endWar('win', T.PLAYER); });   // the renderer off: software WebGL frames are slow
       await page.waitForFunction(() => !document.getElementById('over').classList.contains('hidden'), null, { timeout: 60000, polling: 250 });
       const rep = await page.evaluate(() => { const R = document.getElementById('report'); return { charts: R.querySelectorAll('svg.ch').length, lines: R.querySelectorAll('svg.ch .ln').length, ledger: R.querySelectorAll('.rep-ledger tbody tr').length, econ: R.querySelectorAll('.ledger.econ tbody tr:not(.grp)').length, earned: [...R.querySelectorAll('.ledger.econ tr.total td')].map((td) => parseInt(td.textContent.replace(/,/g, ''), 10)), moments: R.querySelectorAll('.rep-moments .ce').length, width: R.scrollWidth <= R.clientWidth + 1,
         spill: [...R.querySelectorAll('*')].filter((el) => el.getBoundingClientRect().right > R.getBoundingClientRect().right + 1 && !el.closest('.tblwrap')).slice(0, 3).map((el) => `${el.tagName}.${el.getAttribute('class') || ''} ${(el.textContent || '').slice(0, 30)}`) }; });

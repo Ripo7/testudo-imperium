@@ -5,3 +5,4 @@ test-results/
 tools/out/
 *.log
 .DS_Store
+__pycache__/

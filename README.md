@@ -52,6 +52,7 @@ src/
   debug.js            test hook, loaded only with ?test
   styles/main.css     all the UI styling (colour tokens at the top)
   assets/fonts/       Marcellus and Alegreya Sans
+  assets/units/       close-up unit models (.glb), made by tools/blender
   core/               helpers, synthesized audio
   map/generate.js     the continent: relief, biomes, rivers, provinces, cities, roads,
                       bridges, fords and the marching cost of every cell (pure JS)
@@ -64,7 +65,7 @@ src/
                       the end-of-war report (report.js), map labels, input, screens,
                       the autoplay camera
 tests/                Node and browser tests (npm test)
-tools/                balance and audit scripts
+tools/                balance and audit scripts; tools/blender: the soldiers' Blender models
 ```
 
 The simulation in `src/game` advances in fixed steps (`simStep`) and doesn't depend on rendering, which is what lets the tests and tools play whole wars in seconds with the renderer switched off.
@@ -76,15 +77,38 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 `npm test` builds the game and runs:
 
 - **map**: map generation is deterministic and every province has its cities (plain Node).
+- **params**: every balance number has a meaning and bounds, `balance.js` writes back exactly, a value changed at run time reaches the game and its texts, and the battle lab is deterministic.
 - **smoke**: a campaign plays on desktop and phone sizes, every panel (Overview tabs included) renders, the fog hides what it should, the war is recorded and the end-of-war report renders, no console errors.
 - **controls**: on a phone, the dock steps through the armies, pauses and changes speed; a tap plans a march and a second tap gives it; a tap on an enemy town shows the odds; a long press adds an army to the selection; the layout held upright and sideways. On a desktop, the keys that step through the armies.
 - **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
 - **determinism**: the same seed gives exactly the same game, whatever sounds and effects do with their own random numbers, and a war saved and loaded goes on exactly as if it had never stopped.
+- **headless**: the simulation runs in plain Node, without a browser, and ten minutes of war there match the browser's exactly, byte for byte (the tuning tools play their wars this way).
 - **save & resume**: play, close the tab, reopen, and check the restored game matches the save exactly.
 
 GitHub Actions runs the same suite on every push and pull request (`.github/workflows/ci.yml`).
 
 For balance work, `npm run balance` and `npm run audit` play AI wars and print the numbers that matter: win rates per power (aim for 20–30% each), war length, elite share of recruits, how many wars run at once, and how often walls, forts, markets, improvements, retreats, revolts and peace treaties are used.
+
+## Tuning the balance
+
+Every number the balance rests on (250 of them: units, elite units, combat rules, buildings, perks, economy, the AI's tastes, diplomacy) lives in `src/game/balance.js`, and `src/game/params.js` says what each one means and how far it may move. Three labs measure them, and a tuner looks for better values.
+
+| Command | What it does |
+|---|---|
+| `npm run params -- list perks` | Every parameter of a group (or matching a word) with its value and bounds. `set id=value` writes `balance.js`, `diff` compares with git, `check` checks the bounds |
+| `npm run lab` | The battle and economy labs and their scorecard, in a few seconds |
+| `npm run lab -- wars 200` | The same, plus 200 AI wars on every core (always the same seeds, so two runs compare fairly) |
+| `npm run tune` | Tune, then check the result on wars the tuner never played; a report in `tools/out/tune-<date>/` |
+| `npm run tune -- fast` / `fair` | Only one of the two steps; `--apply` writes `balance.js` when the result does better |
+
+- **Battle lab**: isolated battles fought by the game's own combat code, without dice, between armies of equal worth (their price plus three minutes of upkeep). It checks the counters the game promises (spears stop horse, horse rides down archers, elephants trample legions…), that no unit is the best buy everywhere, and how each power's usual army fares against the others'. Exact, and fast enough to try hundreds of variants a minute.
+- **Economy lab**: what improvements, walls and siege engines give back for their price, straight from the rules.
+- **War lab**: AI-vs-AI wars in plain Node, on every core, with every mechanic counted: win shares with their 95% intervals, war length, the units raised, improvements, forts, retreats, revolts, peace treaties, and what each power's perk is worth per minute.
+- **The tuner** first works on the units, elites, combat and buildings with the two fast labs. It moves a few values at a time, prefers small changes, and puts back any change the result doesn't need. Then it evens out the powers' wins over rounds of wars, moving one perk per power (perks don't count in the battle lab's equal-worth fights, so this leaves the units alone). Last, it plays wars it never saw, before and after, and only applies the result if it does better.
+- **The targets** (what "well balanced" means, and which perk is each power's lever) are in `tools/lab/targets.js`. Change them to change the goal.
+- **On GitHub**: the *Tune the balance* workflow (Actions tab, Run workflow) does the same with more wars: the tuning on one machine, the check spread over parallel jobs. *Propose* leaves a report in the run's summary and artifacts; *apply* runs the tests on the new values and opens a pull request. Opening it needs Settings › Actions › General › "Allow GitHub Actions to create and approve pull requests".
+
+The labs see what the AI does, not what a human would: a mechanic the AI rarely uses (forts) looks weak, and the AI recruits by a fixed taste per power rather than by price. The battle lab's measures don't depend on the AI's choices, which is why the tuner leans on it first.
 
 ## Deploy on Vercel
 
@@ -98,7 +122,7 @@ The game is a static site, so any static host works too (Netlify, Cloudflare Pag
 
 - **Interface**: `src/styles/main.css` and the markup in `index.html`. Colours are CSS variables at the top of the stylesheet.
 - **3D world**: each part has its own module in `src/render/`. Soldiers are in `crowds.js` (instanced, so hundreds stay cheap), cities and walls in `cities.js`, the painted ground in `terrain.js`, light, shadows and clouds in `atmosphere.js`.
-- **Real 3D models**: put `.glb` files in `public/models/` and load them with three.js's `GLTFLoader` (`three/examples/jsm/loaders/GLTFLoader.js`). Keep instancing for armies.
+- **Unit models (close up)**: armies near the camera are drawn with detailed models, the rest with the light procedural soldiers of `crowds.js`. The models are built in code from a base soldier with a skeleton (`tools/blender/soldier_base.py`), posed and dressed per unit (`tools/blender/units.py`), and exported to `src/assets/units/<unit>.glb`: `python3 tools/blender/units.py spear` with the `bpy` module (`pip install bpy`), or *Run Script* in Blender. `src/render/models.js` lists the files (`MODEL_URLS`) and loads them in the background; a unit without a file keeps its light model up close. A model from elsewhere works too if it follows the same rules: Blender metres (the game scales by 0.2), feet at 0, facing Blender's front (-Y), plain colours per material with `tint` for the power's colour, and the vertex attributes `_part` (1 and 2 the legs, 3 the weapon arm) and `_wave` (cloth). Keep a close-up model under about a thousand triangles: up to `NEAR_CAP` of them are drawn at once.
 - **three.js** is pinned to 0.149.0. Upgrading past r152 changes colour management and r155 changes light intensities, so plan a visual pass when you upgrade.
 
 ## Known issues

@@ -7,7 +7,7 @@ import { updateArmy } from './armies.js';
 import { detectContacts, updateBattles } from './battles.js';
 import { economy } from './economy.js';
 import { aiTick } from './ai.js';
-import { endAuto, endCampaign, onEliminated } from '../ui/hud.js';
+import { HOOKS } from './hooks.js';
 import { historyTick, recordFall, sampleHistory } from './chronicle.js';
 
 /* =========================================================
@@ -36,7 +36,7 @@ export function checkFactions() {
     if (!F.alive) continue;
     const cities = MAP.cities.some((c) => c.owner === F.id);
     const armies = GS.armies.some((a) => !a.dead && a.owner === F.id);
-    if (!cities && !armies) { F.alive = false; F.eliminatedAt = GS.time; recordFall(F.id); onEliminated(F); }
+    if (!cities && !armies) { F.alive = false; F.eliminatedAt = GS.time; recordFall(F.id); HOOKS.eliminated(F); }
   }
   if (GS.over) return;
   const majors = MAP.cities.filter((c) => c.major);
@@ -44,12 +44,14 @@ export function checkFactions() {
     updateStanding();
     const lead = GS.factions.find((F) => F.alive && F.provs >= STAND.need);
     const alive = GS.factions.filter((F) => F.alive);
-    if (lead || alive.length <= 1) { sampleHistory(); endAuto(lead || alive[0] || GS.factions[0]); }
+    if (lead || alive.length <= 1) { sampleHistory(); endWar('auto', (lead || alive[0] || GS.factions[0]).id); }
     return;
   }
   updateStanding();
   const mine = GS.factions[PLAYER].provs, need = STAND.need;
   const rival = GS.factions.find((F) => !F.isPlayer && F.alive && F.provs >= need);
-  if (mine >= need || GS.factions.every((F) => F.isPlayer || !F.alive)) { sampleHistory(); endCampaign(true); }
-  else if (!majors.some((c) => c.owner === PLAYER) || rival) { GS.rival = rival ? rival.name : null; GS.rivalF = rival ? rival.id : -1; sampleHistory(); endCampaign(false); }
+  if (mine >= need || GS.factions.every((F) => F.isPlayer || !F.alive)) { sampleHistory(); endWar('win', PLAYER); }
+  else if (!majors.some((c) => c.owner === PLAYER) || rival) { GS.rival = rival ? rival.name : null; GS.rivalF = rival ? rival.id : -1; sampleHistory(); endWar('lose', rival ? rival.id : -1); }
 }
+// the war is over: 'win' or 'lose' for the player, 'auto' when the AI played every power (winner: who won)
+export function endWar(over, winner) { GS.over = over; GS.winner = winner; HOOKS.warOver(); }

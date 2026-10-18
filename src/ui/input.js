@@ -1,4 +1,4 @@
-import { seesCity } from '../game/sight.js';
+import { seesCity } from './view.js';
 import { groundInfo } from '../game/armies.js';
 import { THREE } from '../three.js';
 import { GS, MAP, menOf, ownerName } from '../game/state.js';

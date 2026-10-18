@@ -1,4 +1,5 @@
 import { FACTIONS, RES, sigOf } from '../game/data.js';
+import { ownerName } from '../game/state.js';
 
 /* =========================================================
    Icons & formatting
@@ -27,6 +28,8 @@ export const fmt = (n) => (n >= 10000 ? (n / 1000).toFixed(0) + 'k' : n >= 1000 
 export const fmtInt = (n) => Math.round(n).toLocaleString('en-US');
 export const fmtRate = (r) => (r >= 0 ? '+' : '−') + Math.abs(r).toFixed(1);
 export const fcss = (o) => (o >= 0 ? FACTIONS[o].css : '#a39d92');
+// a power's name in its colour
+export const fname = (f) => `<b style="color:${fcss(f)}">${ownerName(f)}</b>`;
 export const RCOL = { gold: '#f2c14e', food: '#9fd36a', wood: '#c08a55', stone: '#b9b3aa' };
 export const costMini = (F, cost) => '<span class="cst">' + RES.filter((r) => cost[r]).map((r) => `<span class="${F.res[r] < cost[r] ? 'no' : ''}" style="--c:${RCOL[r]}" title="${r}">${cost[r]}</span>`).join('') + '</span>';
 export const costHtml = (F, cost, k = 1) => RES.filter((r) => cost[r]).map((r) => `<span class="${F.res[r] < cost[r] * k ? 'no' : ''}">${Math.round(cost[r] * k)} ${r}</span>`).join(' · ');

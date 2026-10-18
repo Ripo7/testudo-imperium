@@ -1,9 +1,10 @@
 import { THREE } from '../three.js';
-import { seesArmy } from '../game/sight.js';
+import { seesArmy } from '../ui/view.js';
 import { GS } from '../game/state.js';
 import { clamp, isTouch, smooth, TAU } from '../core/util.js';
 import { rng32 } from '../map/generate.js';
-import { _ge, _gm, _gp, _gq, _gs, box, cone, cyl, MAT, scene, sph } from './renderer.js';
+import { _ge, _gm, _gp, _gq, _gs, box, camera, cone, cyl, MAT, scene, sph } from './renderer.js';
+import { loadUnitModels } from './models.js';
 import { cellToWorld, FCOL } from './world.js';
 import { dust } from './overlays.js';
 import { CAM } from './camera.js';
@@ -120,10 +121,10 @@ export function buildCrowdGeos() {
   G.spear = mergeX([
     ...legs(0.1, 0.024), torso(0.165), head(0.27),
     { geo: cone(0.052, 0.07, 8), color: '#8f969d', pos: [0, 0.315, 0] },
-    { geo: cyl(0.075, 0.075, 0.014, 12), color: W, tint: 1, rot: [Math.PI / 2, 0, 0], pos: [-0.04, 0.17, 0.065] },
-    { geo: new THREE.TorusGeometry(0.075, 0.008, 4, 14), color: '#c8b27a', pos: [-0.04, 0.17, 0.074] },
-    { geo: cyl(0.007, 0.007, 0.62, 4), color: WOOD, pos: [0.07, 0.3, 0.03], part: 3 },
-    { geo: cone(0.016, 0.065, 4), color: STEEL, pos: [0.07, 0.64, 0.03], part: 3 },
+    { geo: cyl(0.075, 0.075, 0.014, 12), color: W, tint: 1, rot: [Math.PI / 2, 0, 0], pos: [0.04, 0.17, 0.065] },
+    { geo: new THREE.TorusGeometry(0.075, 0.008, 4, 14), color: '#c8b27a', pos: [0.04, 0.17, 0.074] },
+    { geo: cyl(0.007, 0.007, 0.62, 4), color: WOOD, pos: [-0.07, 0.3, 0.03], part: 3 },          // spear in the right hand, as up close
+    { geo: cone(0.016, 0.065, 4), color: STEEL, pos: [-0.07, 0.64, 0.03], part: 3 },
   ]);
   // archer: hood, bow, quiver
   G.arch = mergeX([
@@ -275,6 +276,23 @@ export function buildCrowdGeos() {
   }
 }
 
+/* ---------- close-up models ----------
+   Armies near the camera are drawn with the detailed models from models.js where a unit has one; the rest, and any
+   close soldiers beyond NEAR_CAP, keep the light procedural ones above. An army switches whole, with a margin
+   (NEAR_IN / NEAR_OUT, camera distance in world units) so that it does not flicker at the edge. */
+export const NEAR_CAP = 900, NEAR_IN = 12, NEAR_OUT = 14;
+export const crowdNear = {};
+export const nearArmies = new Set();
+export function addCloseModel(type, geo) {
+  geo.setAttribute('iAnim', new THREE.InstancedBufferAttribute(new Float32Array(NEAR_CAP * 3), 3));
+  const m = new THREE.InstancedMesh(geo, MAT.crowd, NEAR_CAP);
+  m.count = 0; m.frustumCulled = false; m.castShadow = !isTouch;
+  m.setColorAt(0, new THREE.Color(1, 1, 1));
+  scene.add(m);
+  crowdNear[type] = m;
+}
+export function loadCloseModels() { loadUnitModels(addCloseModel); }
+
 /* ---------- formation ---------- */
 export const FIG_MEN = 25, FIG_MAX = 72;
 export function armyLayout(a) {
@@ -351,9 +369,9 @@ export let crowdLastT = 0;
 export function updateCrowds(t) {
   ARMY_U.uTime.value = t;
   const dt = clamp(t - crowdLastT, 0, 0.1); crowdLastT = t;
-  const used = {}; for (const k of CROWD_TYPES) used[k] = 0;
+  const used = {}, usedNear = {}; for (const k of CROWD_TYPES) { used[k] = 0; usedNear[k] = 0; }
   for (const a of GS.armies) {
-    if (a.dead || !seesArmy(a)) continue;
+    if (a.dead || !seesArmy(a)) { nearArmies.delete(a.id); continue; }
     const L = armyLayout(a);
     const col = FCOL[a.owner];
     const moving = a.state === 'move' || a.state === 'rout';
@@ -377,13 +395,16 @@ export function updateCrowds(t) {
       h = Math.atan2(-ux * sg, -uy * sg);
     }
     const ch = Math.cos(h), sh = Math.sin(h);
+    cellToWorld(ax, ay, _cp);
+    const dc = _cp.distanceTo(camera.position), near = nearArmies.has(a.id) ? dc < NEAR_OUT : dc < NEAR_IN;
+    if (near) nearArmies.add(a.id); else nearArmies.delete(a.id);
     const routing = a.state === 'rout';
     const testudo = a.stance === 'def';
     for (const f of L) {
       const type = f.t === 'leg' && testudo ? 'legT' : f.t;
-      const m = crowd[type];
-      const k = used[type]; if (k >= CROWD_CAP[type]) continue;
-      used[type]++;
+      let m, k;
+      if (near && crowdNear[type] && usedNear[type] < NEAR_CAP) { m = crowdNear[type]; k = usedNear[type]++; }
+      else { m = crowd[type]; k = used[type]; if (k >= CROWD_CAP[type]) continue; used[type]++; }
       let lx = f.x, lz = f.z;
       if (routing) { lx *= 1.7; lz *= 1.7; lx += Math.sin(t * 3 + f.ph) * 0.08; }
       if (fighting && f.t !== 'siege' && f.t !== 'std') { lz += Math.max(0, Math.sin(t * 7 + f.ph)) * 0.05; lx += Math.sin(t * 5.3 + f.ph * 2) * 0.02; }
@@ -407,11 +428,13 @@ export function updateCrowds(t) {
     }
   }
   for (const t2 of CROWD_TYPES) {
-    const m = crowd[t2];
-    m.count = used[t2];
-    m.instanceMatrix.needsUpdate = true;
-    if (m.instanceColor) m.instanceColor.needsUpdate = true;
-    m.geometry.attributes.iAnim.needsUpdate = true;
+    for (const [m, n] of [[crowd[t2], used[t2]], [crowdNear[t2], usedNear[t2]]]) {
+      if (!m) continue;
+      m.count = n;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      m.geometry.attributes.iAnim.needsUpdate = true;
+    }
   }
   updateBattleFX(t, dt);
 }

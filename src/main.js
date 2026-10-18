@@ -1,4 +1,5 @@
-import { fogShown, seesBattle, SIGHT } from './game/sight.js';
+import { SIGHT } from './game/sight.js';
+import { fogShown, seesBattle } from './ui/view.js';
 import { PROV } from './game/standing.js';
 import { updateTerrainColors } from './render/terrain.js';
 import { initAtmosphere, updateFogTexture } from './render/atmosphere.js';
@@ -8,25 +9,27 @@ import { camera, renderer, scene } from './render/renderer.js';
 import { buildEnvironment } from './render/world.js';
 import { updateDust } from './render/overlays.js';
 import { CAM, projectCell, updateCameraRig } from './render/camera.js';
-import { buildCrowdGeos, updateCrowds } from './render/crowds.js';
+import { buildCrowdGeos, loadCloseModels, updateCrowds } from './render/crowds.js';
 import { simStep } from './game/sim.js';
 import { _pp, UI } from './ui/state.js';
 import { initPanel, renderPanel } from './ui/panel.js';
-import { defaultHint, updateHUD, updateLog } from './ui/hud.js';
+import { defaultHint, initHooks, updateHUD, updateLog } from './ui/hud.js';
 import { $labels, updateLabels, updateSelectionVisuals } from './ui/labels.js';
 import { keyboardPan } from './ui/input.js';
 import { initScreens, prepareCampaign } from './ui/screens.js';
-import { clearSave, loadSave, resumeCampaign, saveGame, showTitle } from './game/save.js';
+import { clearSave, loadSave, resumeCampaign, saveGame, showTitle } from './ui/persist.js';
 import { updateDirector } from './ui/director.js';
 
 /* =========================================================
    Boot & loop
    ========================================================= */
+initHooks();
 initAtmosphere();
 initPanel();
 initScreens();
 buildEnvironment();
 buildCrowdGeos();
+loadCloseModels();
 
 // Start from (in order) the state handed over by a live page update, the save in this browser, or a fresh continent.
 function boot(data) {

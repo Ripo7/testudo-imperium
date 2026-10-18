@@ -1,12 +1,14 @@
 import { groundInfo, mergeArmies, nearestCity, orderTarget, pathTime, splitArmy } from '../game/armies.js';
-import { seesArmy, seesBattle, seesCity } from '../game/sight.js';
+import { seesArmy, seesBattle, seesCity } from './view.js';
 import { atWar, declareWar, mins, peaceAnswer, relOf, renewTreaty, suePeace, treatyAnswer, wearyWord } from '../game/diplomacy.js';
 import { DISPUTED, holdsIn, placesOf, provSecure, provW, SET_W } from '../game/standing.js';
 import { canAfford, dist, emptyComp, GS, MAP, menOf, ownerName, provAt, starsOf } from '../game/state.js';
 import { isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { BIOME } from '../map/generate.js';
-import { FACTIONS, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, PLUNDER, pName, RES, sigOf, TYPES5, U, unitCost, UNITS, wallCost } from '../game/data.js';
+import {
+  BUILD, COMBAT, ECON, FACTIONS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, pName, RES, sgnPct, sigOf, TYPES5, U, unitCost, UNITS, wallCost,
+} from '../game/data.js';
 import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideFought, sideMen } from '../game/battles.js';
 import { armyPay, buildImp, cityYield, fortify, landShare, marketOf, plunderer, recruit, trade } from '../game/economy.js';
 import { costHtml, costMini, etaShort, fcss, fmt, fmtInt, IC, icOf } from './format.js';
@@ -38,8 +40,8 @@ export function doAct(act) {
     case 'dip': if (GS.auto) UI.selOver = 'wars'; else { clearSel(true); UI.selDip = +arg; UI.dipMsg = ''; } break;
     case 'recruit': if (c && recruit(F, c, arg)) Sfx.click(); else { Sfx.deny(); flashHint(c && c.queue.length >= 5 ? 'Recruitment queue is full.' : 'Not enough resources.'); } break;
     case 'walls': if (c && fortify(F, c)) Sfx.thunk(); else { Sfx.deny(); flashHint('Not enough resources.'); } break;
-    case 'peace': { if (suePeace(+arg)) Sfx.horn(); else Sfx.deny(); updateHUD(); break; }
-    case 'treaty': { if (renewTreaty(+arg)) Sfx.click(); else Sfx.deny(); break; }
+    case 'peace': { const r = suePeace(+arg); UI.dipMsg = r.msg; if (r.ok) Sfx.horn(); else Sfx.deny(); updateHUD(); break; }
+    case 'treaty': { const r = renewTreaty(+arg); UI.dipMsg = r.msg; if (r.ok) Sfx.click(); else Sfx.deny(); break; }
     case 'war': { declareWar(PLAYER, +arg); UI.dipMsg = ''; break; }
     case 'imp': if (c && buildImp(F, c, arg)) Sfx.thunk(); else { Sfx.deny(); flashHint('Not enough resources.'); } break;
     case 'retreat': { let n = 0; for (const a of UI.sel) if (!a.dead && retreatArmy(a)) n++; if (n) Sfx.click(); else { Sfx.deny(); flashHint('Too early to disengage, or the walls hold you.'); } break; }
@@ -130,9 +132,9 @@ export function cityPanel(c) {
   if (c.owner >= 0) {
     const secure = provSecure(P), pct = Math.round(SET_W(c) / provW(P) * 100);
     const cy = sc(cityYield(c, c.owner)), ly = sc(landShare(c)), tot = Object.fromEntries(RES.map((r) => [r, cy[r] + ly[r]]));
-    info += `<div class="sect" title="The city's own income, plus its share of the province's land">Income · the city and ${pct}% of ${P.name}'s land${secure ? ', secure +12%' : ''}</div><div class="kv">${yieldChips(tot)}</div>`;
+    info += `<div class="sect" title="The city's own income, plus its share of the province's land">Income · the city and ${pct}% of ${P.name}'s land${secure ? `, secure ${sgnPct(ECON.secure)}` : ''}</div><div class="kv">${yieldChips(tot)}</div>`;
     const pl = plunderer(c.prov, c.owner);
-    if (pl) info += `<div class="note">${ownerName(pl.owner)} troops are plundering ${P.name}: land income <b>−${Math.round((1 - PLUNDER) * 100)}%</b>. Drive them off, or guard the countryside with a fort.</div>`;
+    if (pl) info += `<div class="note">${ownerName(pl.owner)} troops are plundering ${P.name}: land income <b>−${Math.round((1 - ECON.plunder) * 100)}%</b>. Drive them off, or guard the countryside with a fort.</div>`;
     const st = GS.factions[c.owner].stretch;
     if (st < 0.995) info += `<div class="note">${FACTIONS[c.owner].name} is overstretched: all income at <b>${Math.round(st * 100)}%</b> and conquests settle slowly.</div>`;
   }
@@ -238,9 +240,9 @@ export function myArmyPanel(list) {
   const allDef = list.every((a) => a.stance === 'def'), allAgg = list.every((a) => a.stance === 'aggr');
   const defName = sigOf(ME).testudo ? 'Testudo' : 'Shield wall';
   h += `<div class="seg"><button class="${allAgg ? 'on' : ''}" data-act="stance:aggr">⚔ Aggressive</button><button class="${allDef ? 'on' : ''}" data-act="stance:def">🛡 ${defName}</button></div>`;
-  h += `<div class="note">${allDef ? (sigOf(ME).testudo ? 'Testudo: <b>+22% defense</b>, legionaries take far less from arrows, slower march.' : 'Shield wall: <b>+22% defense</b>, slower march.') : 'Aggressive: <b>+12% attack</b>, weaker defense.'}</div>`;
+  h += `<div class="note">${allDef ? (sigOf(ME).testudo ? `Testudo: <b>${sgnPct(COMBAT.defDef)} defense</b>, legionaries take far less from arrows, slower march.` : `Shield wall: <b>${sgnPct(COMBAT.defDef)} defense</b>, slower march.`) : `Aggressive: <b>${sgnPct(COMBAT.aggrAtk)} attack</b>, weaker defense.`}</div>`;
   const pay = list.reduce((s, a) => s + armyPay(a), 0);
-  h += `<div class="kv"><span class="chip">${IC.food}eats <b>${(upk * (home || forage ? 1 : 1.35)).toFixed(1)}</b>/s${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${pay.toFixed(1)}</b>/s</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
+  h += `<div class="kv"><span class="chip">${IC.food}eats <b>${(upk * (home || forage ? 1 : ECON.abroad)).toFixed(1)}</b>/s${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${pay.toFixed(1)}</b>/s</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
   if (list.length === 1) { const g = groundInfo(a0.x, a0.y); h += `<div class="kv"><span class="chip">${g.name} · <b>${g.pace}</b></span></div>`; }
   h += `<div class="note">${isTouch ? 'Tap the map or a target: the route and the odds show first, tap again to go. Hold another of your armies to add it.' : 'Right-click the map to march; right-click an enemy to attack, a friendly army to merge, your city to garrison. Shift-click adds an army.'}</div>`;
   h += '</div>';
@@ -307,7 +309,7 @@ export function enemyArmyPanel(a) {
 export function fortPanel(f) {
   let h = headerHtml(fcss(f.owner), `${f.owner === ME ? 'Our' : FACTIONS[f.owner].adj} fort`, f.built < 1 ? 'Under construction' : 'Slows enemy armies within 3 leagues and blocks the road') + '<div class="pb">';
   if (f.built < 1) h += `<div class="prog"><i style="width:${Math.round(f.built * 100)}%"></i></div>`;
-  h += `<div class="kv"><span class="chip">${IC.men}garrison <b>${fmtInt(f.militia)}</b>/${FORT_MAX}</span><span class="chip">${IC.walls}walls <b>${wallsDots(FORT_WALLS)}</b></span></div>`;
+  h += `<div class="kv"><span class="chip">${IC.men}garrison <b>${fmtInt(f.militia)}</b>/${BUILD.fort.max}</span><span class="chip">${IC.walls}walls <b>${wallsDots(BUILD.fort.walls)}</b></span></div>`;
   const arms = myOrderables();
   if (f.owner !== ME && arms.length) h += oddsHtml(estimateOdds(arms, { kind: 'fort', ref: f }, 0, ME), 'If your selected army attacks');
   return h + '</div>';
@@ -318,7 +320,7 @@ export function provPanel(P) {
   let h = headerHtml(fcss(P.owner), P.name, `Province · ${provStatus(P)}`) + '<div class="pb">';
   h += '<div class="terrbar">' + seg.map(([b, c]) => `<i style="background:${c};width:${(C[b] / n * 100).toFixed(1)}%"></i>`).join('') + '</div>';
   h += '<div class="kv">' + seg.filter(([b]) => C[b] / n > 0.04).map(([b, c, nm]) => `<span class="chip"><i style="width:9px;height:9px;border-radius:2px;background:${c}"></i>${nm} ${Math.round(C[b] / n * 100)}%</span>`).join('') + '</div>';
-  h += `<div class="sect">Land yield, split between its settlements (+12% while held whole)</div><div class="kv">${yieldChips(Object.fromEntries(RES.map((r) => [r, P.yield[r] * 0.8])))}</div>`;
+  h += `<div class="sect">Land yield, split between its settlements (${sgnPct(ECON.secure)} while held whole)</div><div class="kv">${yieldChips(Object.fromEntries(RES.map((r) => [r, P.yield[r] * 0.8])))}</div>`;
   const pl = placesOf(P);
   h += `<div class="sect">Places · ${pl.length}, all needed to hold it</div><div class="list">` + pl.map((x) => (x.kind === 'city'
     ? `<button class="li" data-act="selcity:${x.ref.id}"><i class="sw" style="background:${fcss(x.ref.owner)}"></i><span class="cn">${x.ref.major ? '★ ' : ''}${x.ref.name}</span><span class="what">${ownerName(x.ref.owner)}</span><em title="Share of the land income">${Math.round(SET_W(x.ref) / provW(P) * 100)}%</em></button>`

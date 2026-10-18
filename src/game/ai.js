@@ -1,11 +1,14 @@
 import { cityEstimate, knowsArmy } from './sight.js';
 import { atPeace, atWar, warsOf } from './diplomacy.js';
 import { canAfford, dist, emptyComp, GS, MAP, menOf, provAt, rnd } from './state.js';
-import { diffOf, FORT_MAX, FORT_WALLS, fortCost, hasImp, IMP_IDS, impCost, impSlots, NEUTRAL, RIVALRY, sigOf, TYPES5, unitCost, wallCost } from './data.js';
+import {
+  BUILD, COMBAT, diffOf, fortCost, hasImp, IMP_IDS, impCost, impSlots, NEUTRAL, RIVALRY, sigOf, TYPES5, unitCost, wallCost,
+} from './data.js';
 import { fortProv, holdsIn, placesOf } from './standing.js';
 import { mergeArmies, nearestCity, orderTarget } from './armies.js';
 import { canRetreat, estimateOdds, powerOf, retreatArmy, retreatSide, sideComp, sideMen } from './battles.js';
 import { buildFort, buildImp, fortify, fortSpotOk, recruit, trade } from './economy.js';
+import { BALANCE } from './balance.js';
 
 /* =========================================================
    AI
@@ -13,7 +16,7 @@ import { buildFort, buildImp, fortify, fortSpotOk, recruit, trade } from './econ
 // how much more a place is worth when taking it finishes a province (complete), leaves one place to go (nearly),
 // or breaks a rival's province (breaks; breakLeader for the power closest to victory); fort: an enemy fort's base value
 // need: the odds of victory an army wants before it attacks (less for aggressive powers)
-export const AI_PROV = { complete: 3, nearly: 1.7, breaks: 1.15, breakLeader: 1.5, fort: 1.7, need: 0.68 };
+export const AI_PROV = BALANCE.ai.prov;
 export function aiTick(F) {
   const mine = MAP.cities.filter((c) => c.owner === F.id);
   if (!mine.length) return;
@@ -189,7 +192,7 @@ export function aiTick(F) {
         const d = dist(a, c); if (d > 60) continue;
         const ganged = gang && c.owner >= 0 ? (c.owner === topF.id ? 1 + gang : 1 - 0.25 * Math.min(1, gang)) : 1;
         const value = (c.major ? 3.2 : 1.7) * (c.owner === NEUTRAL ? 1.15 : 1) * (c.owner >= 0 && GS.factions[c.owner].isPlayer ? 1 + F.aggr * 0.3 : 1) * (c.capital ? 1.4 : 1) * provValue(MAP.provinces[c.prov], c) * ganged * (1 + 0.12 * (c.imps ? c.imps.length : 0));
-        const ratio = ratioOf(cityEstimate(F.id, c).militia * (1 + 0.45 * Math.max(0, c.walls - Math.floor(a.comp.siege / 2))));   // what it believes defends the city
+        const ratio = ratioOf(cityEstimate(F.id, c).militia * (1 + COMBAT.wallDef * Math.max(0, c.walls - Math.floor(a.comp.siege / 2))));   // what it believes defends the city
         if (ratio < 0.7) continue;
         cands.push({ ref: c, kind: 'city', d, value, pre: value * Math.min(ratio, 3) / (d + 12) });
       }
@@ -198,7 +201,7 @@ export function aiTick(F) {
         const p = fortProv(f); if (p < 0 || !holdsIn(MAP.provinces[p], F.id)) continue;   // only forts in provinces it has a stake in
         const d = dist(a, f); if (d > 60) continue;
         const value = AI_PROV.fort * provValue(MAP.provinces[p], f);
-        const ratio = ratioOf(FORT_MAX * (1 + 0.45 * Math.max(0, FORT_WALLS - Math.floor(a.comp.siege / 2))));
+        const ratio = ratioOf(BUILD.fort.max * (1 + COMBAT.wallDef * Math.max(0, BUILD.fort.walls - Math.floor(a.comp.siege / 2))));
         if (ratio < 0.7) continue;
         cands.push({ ref: f, kind: 'fort', d, value, pre: value * Math.min(ratio, 3) / (d + 12) });
       }

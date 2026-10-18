@@ -1,4 +1,5 @@
-import { canSee, SIGHT } from '../game/sight.js';
+import { SIGHT } from '../game/sight.js';
+import { canSee } from '../ui/view.js';
 import { THREE } from '../three.js';
 import { MAP } from '../game/state.js';
 import { rand } from '../core/util.js';

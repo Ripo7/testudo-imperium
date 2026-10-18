@@ -6,8 +6,10 @@ import powers from './powers.test.js';
 import determinism from './determinism.test.js';
 import saveResume from './save-resume.test.js';
 import controls from './controls.test.js';
+import headless from './headless.test.js';
+import params from './params.test.js';
 
-const suites = { map, smoke, controls, powers, determinism, 'save & resume': saveResume };
+const suites = { map, params, smoke, controls, powers, determinism, headless, 'save & resume': saveResume };
 const only = process.argv[2];
 for (const [name, fn] of Object.entries(suites)) {
   if (only && !name.startsWith(only)) continue;

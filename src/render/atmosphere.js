@@ -7,7 +7,8 @@ import { RIVER_MAT, RIVER_U, WATER_MAT, WATER_U } from './water.js';
 import { FLORA_MAT } from './vegetation.js';
 import { FIELD_MAT, ROAD_MAT } from './cities.js';
 import { MAP } from '../game/state.js';
-import { SIGHT, viewer } from '../game/sight.js';
+import { SIGHT } from '../game/sight.js';
+import { viewer } from '../ui/view.js';
 
 /* =========================================================
    Atmosphere: golden afternoon light, cool shadows, drifting

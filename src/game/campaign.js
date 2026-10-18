@@ -1,16 +1,16 @@
 import { updateStanding } from './standing.js';
 import { emptyComp, GS, MAP, rndIn, seedRng, setMap } from './state.js';
 import { BIOME, generateMap, rng32 } from '../map/generate.js';
-import { FACTIONS, hasImp, NEUTRAL, PLAYER } from './data.js';
+import { BUILD, FACTIONS, hasImp, NEUTRAL, PLAYER } from './data.js';
 import { makeArmy } from './armies.js';
-import { UI } from '../ui/state.js';
 import { fillStats } from './chronicle.js';
+import { relOf } from './diplomacy.js';
 
 /* =========================================================
    Campaign setup
    ========================================================= */
 export function militiaMaxOf(c) {
-  const base = (c.major ? 260 + c.walls * 150 : 100 + c.walls * 70) + (c.capital ? 300 : 0) + (hasImp(c, 'barracks') ? 70 : 0);
+  const base = (c.major ? 260 + c.walls * 150 : 100 + c.walls * 70) + (c.capital ? 300 : 0) + (hasImp(c, 'barracks') ? BUILD.barracks.militia : 0);
   return c.owner === NEUTRAL ? base * 2.2 : base;
 }
 export function computeProvYield(p) {
@@ -34,10 +34,14 @@ export function computeCityYield(c) {
   c.yield = y;
 }
 
-export function initCampaign(seed) {
-  setMap(generateMap(seed));
-  Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, fog: false, diff: UI.diff == null ? 1 : UI.diff,
+// gen: the map generator's version (map/generate.js MAP_GEN); a save made on an older one rebuilds its map with it
+export function initCampaign(seed, gen) {
+  setMap(generateMap(seed, gen));
+  Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, fog: false, diff: 1, envoy: null,
     fstats: fillStats(), chron: [], hist: [], rivalF: -1, peaceT: 0, sightT: 0 });
+  // every pair of powers, in a fixed order (relOf would otherwise create them as they are first read, the screen's
+  // reads included, so the saved state would depend on what was on screen)
+  for (let f = 0; f < FACTIONS.length; f++) for (let g = f + 1; g < FACTIONS.length; g++) relOf(f, g);
   seedRng(seed);
   GS.factions = FACTIONS.map((F, i) => ({
     id: i, ...F, res: { gold: 500, food: 500, wood: 400, stone: 300 },

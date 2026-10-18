@@ -1,4 +1,4 @@
-import { seesArmy, seesBattle } from '../game/sight.js';
+import { seesArmy, seesBattle } from './view.js';
 import { GS, MAP, menOf } from '../game/state.js';
 import { $, clamp, damp } from '../core/util.js';
 import { CAM } from '../render/camera.js';

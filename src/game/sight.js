@@ -1,8 +1,7 @@
 import { cellOf, GS, MAP, menOf } from './state.js';
-import { clamp } from '../core/util.js';
+import { clamp } from '../core/math.js';
 import { BIOME } from '../map/generate.js';
-import { NEUTRAL, PLAYER, sigOf } from './data.js';
-import { UI } from '../ui/state.js';
+import { NEUTRAL, sigOf } from './data.js';
 
 /* =========================================================
    Fog of war
@@ -12,7 +11,7 @@ import { UI } from '../ui/state.js';
    it last saw of them (or by their size and walls, if it never saw inside).
    The sight grids are part of the simulation (updated in simStep), so the
    game stays deterministic. On screen the fog shows what the player's power
-   sees, or in autoplay the power being followed.
+   sees, or in autoplay the power being followed (ui/view.js).
    ========================================================= */
 export const SIGHT_R = { major: 9, town: 6.5, perWall: 0.6, army: 6, scouts: 3, high: 1.5, fort: 8, fortBuilding: 4 };
 export const SIGHT_EVERY = 0.5;   // seconds of game time between updates
@@ -23,8 +22,6 @@ export const SIGHT = { on: false, grids: [], version: 0 };
 const SEEN = 90;
 
 export const fogRules = () => !!(MAP && GS.fog);
-export const viewer = () => (GS.auto ? UI.viewF : PLAYER);
-export const fogShown = () => fogRules() && UI.mode === 'play' && viewer() >= 0;
 
 export function sightRange(a) {
   const men = menOf(a.comp), riders = a.comp.cav + (sigOf(a.owner).mounted ? a.comp.leg : 0);
@@ -84,9 +81,3 @@ export function cityEstimate(f, c) {
   if (age < INTEL_FRESH) return { militia: Math.min(c.militiaMax, I.m + c.militiaMax * 0.012 * age), garrison: I.g, known: false };
   return { militia: c.militiaMax, garrison: 0, known: false };
 }
-
-// what is drawn on screen: the player's view (or the followed power's in autoplay)
-export const canSee = (x, y) => !SIGHT.on || sees(viewer(), x, y);
-export const seesArmy = (a) => !SIGHT.on || a.owner === viewer() || canSee(a.x, a.y);
-export const seesBattle = (B) => !SIGHT.on || B.sides.some((s) => s.faction === viewer()) || canSee(B.x, B.y);
-export const seesCity = (c) => !SIGHT.on || c.owner === viewer() || canSee(c.x, c.y);

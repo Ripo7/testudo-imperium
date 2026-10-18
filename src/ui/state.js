@@ -1,4 +1,4 @@
-import { seesArmy, seesBattle } from '../game/sight.js';
+import { seesArmy, seesBattle } from './view.js';
 import { canAfford, cellOf, GS, MAP } from '../game/state.js';
 import { $, clamp, isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
