@@ -52,6 +52,7 @@ src/
   debug.js            test hook, loaded only with ?test
   styles/main.css     all the UI styling (colour tokens at the top)
   assets/fonts/       Marcellus and Alegreya Sans
+  assets/units/       close-up unit models (.glb), made by tools/blender
   core/               helpers, synthesized audio
   map/generate.js     the continent: relief, biomes, rivers, provinces, cities, roads,
                       bridges, fords and the marching cost of every cell (pure JS)
@@ -64,7 +65,7 @@ src/
                       the end-of-war report (report.js), map labels, input, screens,
                       the autoplay camera
 tests/                Node and browser tests (npm test)
-tools/                balance and audit scripts
+tools/                balance and audit scripts; tools/blender: the soldiers' Blender models
 ```
 
 The simulation in `src/game` advances in fixed steps (`simStep`) and doesn't depend on rendering, which is what lets the tests and tools play whole wars in seconds with the renderer switched off.
@@ -121,7 +122,7 @@ The game is a static site, so any static host works too (Netlify, Cloudflare Pag
 
 - **Interface**: `src/styles/main.css` and the markup in `index.html`. Colours are CSS variables at the top of the stylesheet.
 - **3D world**: each part has its own module in `src/render/`. Soldiers are in `crowds.js` (instanced, so hundreds stay cheap), cities and walls in `cities.js`, the painted ground in `terrain.js`, light, shadows and clouds in `atmosphere.js`.
-- **Real 3D models**: put `.glb` files in `public/models/` and load them with three.js's `GLTFLoader` (`three/examples/jsm/loaders/GLTFLoader.js`). Keep instancing for armies.
+- **Unit models (close up)**: armies near the camera are drawn with detailed models, the rest with the light procedural soldiers of `crowds.js`. The models are built in code from a base soldier with a skeleton (`tools/blender/soldier_base.py`), posed and dressed per unit (`tools/blender/units.py`), and exported to `src/assets/units/<unit>.glb`: `python3 tools/blender/units.py spear` with the `bpy` module (`pip install bpy`), or *Run Script* in Blender. `src/render/models.js` lists the files (`MODEL_URLS`) and loads them in the background; a unit without a file keeps its light model up close. A model from elsewhere works too if it follows the same rules: Blender metres (the game scales by 0.2), feet at 0, facing Blender's front (-Y), plain colours per material with `tint` for the power's colour, and the vertex attributes `_part` (1 and 2 the legs, 3 the weapon arm) and `_wave` (cloth). Keep a close-up model under about a thousand triangles: up to `NEAR_CAP` of them are drawn at once.
 - **three.js** is pinned to 0.149.0. Upgrading past r152 changes colour management and r155 changes light intensities, so plan a visual pass when you upgrade.
 
 ## Known issues

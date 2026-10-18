@@ -9,7 +9,7 @@ import { camera, renderer, scene } from './render/renderer.js';
 import { buildEnvironment } from './render/world.js';
 import { updateDust } from './render/overlays.js';
 import { CAM, projectCell, updateCameraRig } from './render/camera.js';
-import { buildCrowdGeos, updateCrowds } from './render/crowds.js';
+import { buildCrowdGeos, loadCloseModels, updateCrowds } from './render/crowds.js';
 import { simStep } from './game/sim.js';
 import { _pp, UI } from './ui/state.js';
 import { initPanel, renderPanel } from './ui/panel.js';
@@ -29,6 +29,7 @@ initPanel();
 initScreens();
 buildEnvironment();
 buildCrowdGeos();
+loadCloseModels();
 
 // Start from (in order) the state handed over by a live page update, the save in this browser, or a fresh continent.
 function boot(data) {
