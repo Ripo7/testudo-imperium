@@ -620,7 +620,102 @@ def build_siege():
     return unit
 
 
-UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav, 'siege': build_siege}
+def scutum(col, name, centre, width=0.68, height=0.95, radius=0.75, flat=False, cols=5):
+    """The legionary's curved shield: its face in the power's colour between two bronze bands, a bronze rim and boss,
+    a leather back. Built facing -Y (curving round the bearer); flat=True lays it face up, for the testudo's roof."""
+    b = sb.Builder(['tint', 'bronze', 'leather'])
+    half = width / 2 / radius
+    zs = (-height / 2, -height / 2 + 0.07, height / 2 - 0.07, height / 2)
+
+    def surface(r):
+        return [[b.v((r * sin(-half + 2 * half * c / cols), radius - r * cos(-half + 2 * half * c / cols), z))
+                 for c in range(cols + 1)] for z in zs]
+    front, back = surface(radius), surface(radius - 0.035)
+    for row in range(3):
+        mat = 'tint' if row == 1 else 'bronze'
+        for c in range(cols):
+            b.face((front[row][c], front[row][c + 1], front[row + 1][c + 1], front[row + 1][c]), mat)
+            b.face((back[row][c + 1], back[row][c], back[row + 1][c], back[row + 1][c + 1]), 'leather')
+    for c in range(cols):                                          # rims, top and bottom
+        b.face((front[0][c + 1], front[0][c], back[0][c], back[0][c + 1]), 'bronze')
+        b.face((front[3][c], front[3][c + 1], back[3][c + 1], back[3][c]), 'bronze')
+    for row in range(3):                                           # rims, the two sides
+        b.face((front[row + 1][0], front[row][0], back[row][0], back[row + 1][0]), 'bronze')
+        b.face((front[row][cols], front[row + 1][cols], back[row + 1][cols], back[row][cols]), 'bronze')
+    beam(b, (0, 0.01, 0), (0, -0.06, 0), 0.075, 0.075, 'bronze', up=Vector((0, 0, 1)))   # boss
+    M = Matrix.Translation(centre)
+    if flat:
+        M = M @ Matrix.Rotation(radians(-90), 4, 'X')
+    bmesh.ops.transform(b.bm, matrix=M, verts=b.bm.verts[:])
+    return b.finish(name, col, [])
+
+
+def pilum(col, name, at, z0=0.05):
+    """The legionary's javelin, upright: wooden shaft, bronze weight, long iron shank, pyramid point."""
+    b = sb.Builder(['wood', 'bronze', 'steel'])
+    x, y = at
+    Y = Vector((0, 1, 0))
+    tube(b, [Vector((x, y, z0)), Vector((x, y, z0 + 1.55))], 0.026, 'wood', n=6, up=Y)
+    beam(b, (x, y, z0 + 1.52), (x, y, z0 + 1.62), 0.038, 0.038, 'bronze', up=Y)
+    tube(b, [Vector((x, y, z0 + 1.6)), Vector((x, y, z0 + 2.2))], 0.011, 'steel', n=4, up=Y)
+    base = [b.v((x + 0.022 * cos(radians(a + 45)), y + 0.022 * sin(radians(a + 45)), z0 + 2.2)) for a in range(0, 360, 90)]
+    tip = b.v((x, y, z0 + 2.34))
+    b.face(tuple(reversed(base)), 'steel')
+    for i in range(4):
+        b.face((base[i], base[(i + 1) % 4], tip), 'steel')
+    return b.finish(name, col, [])
+
+
+def cheek_guards(col, name):
+    b = sb.Builder(['steel'])
+    for sx in (1, -1):
+        beam(b, (0.172 * sx, -0.075, 1.455), (0.158 * sx, -0.105, 1.3), 0.012, 0.042, 'steel', up=Vector((0, -1, 0)))
+    return b.finish(name, col, [])
+
+
+def legionary(testudo):
+    rig, (body, skirt) = sb.build_base(armour=True)
+    col = sb.collection('Units')
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    if testudo:                                          # the roof shield up in the left hand, a wall shield in the right
+        aim(rig, 'upper_arm.L', (0.12, -0.05, 0.99)); aim(rig, 'forearm.L', (-0.12, 0.0, 0.99)); aim(rig, 'hand.L', (-0.12, 0.0, 0.99))
+        aim(rig, 'upper_arm.R', (-0.15, -0.2, -0.97)); aim(rig, 'forearm.R', (0.25, -0.95, 0.1)); aim(rig, 'hand.R', (0.25, -0.95, 0.1))
+    else:                                                # pilum upright in the right hand, scutum before him on the left
+        aim(rig, 'upper_arm.R', (-0.2, -0.14, -0.97)); aim(rig, 'forearm.R', (-0.04, -0.96, 0.26)); aim(rig, 'hand.R', (-0.04, -0.96, 0.2))
+        aim(rig, 'upper_arm.L', (0.24, -0.16, -0.96)); aim(rig, 'forearm.L', (-0.3, -0.94, 0.14)); aim(rig, 'hand.L', (-0.3, -0.94, 0.14))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    head = deform(rig, 'head')
+    hm = helmet(col, 'leg_helmet'); hm.matrix_world = head
+    ch = cheek_guards(col, 'leg_cheeks'); ch.matrix_world = head
+    pieces = [(body, 'walker' if testudo else 'body'), (skirt, 0), (hm, 0), (ch, 0)]
+    if testudo:
+        rh = bone_point(rig, 'hand.R', 0.5)
+        pieces += [(scutum(col, 'legT_roof', Vector((0, -0.05, 1.71)), width=0.82, height=1.09, flat=True), 0),
+                   (scutum(col, 'legT_wall', Vector((0.0, rh.y - 0.12, 0.84))), 0)]
+    else:
+        cr = crest(col, 'leg_crest'); cr.matrix_world = head
+        lh, rh = bone_point(rig, 'hand.L', 0.5), bone_point(rig, 'hand.R', 0.45)
+        pieces += [(cr, 0), (scutum(col, 'leg_scutum', Vector((lh.x - 0.02, lh.y - 0.075, 0.84))), 0),
+                   (pilum(col, 'leg_pilum', (rh.x, rh.y)), 3)]
+    unit = bake('legT' if testudo else 'leg', col, pieces)
+    for ob, *_ in pieces:
+        ob.hide_set(True); ob.hide_render = True
+    rig.hide_set(True)
+    return unit
+
+
+def build_leg():
+    """Legionary: segmented cuirass, crested helmet with cheek guards, curved scutum, pilum."""
+    return legionary(False)
+
+
+def build_legT():
+    """Legionary in testudo: the scutum raised overhead to roof the formation, a second one as its wall."""
+    return legionary(True)
+
+
+UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav, 'siege': build_siege, 'leg': build_leg, 'legT': build_legT}
 
 if __name__ == '__main__':
     for key in [a for a in sys.argv[1:] if a in UNITS] or list(UNITS):
