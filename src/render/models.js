@@ -13,6 +13,7 @@ export const MODEL_SCALE = 0.2;                // Blender metres to game units
 export const MODEL_URLS = {
   spear: new URL('../assets/units/spear.glb', import.meta.url).href,
   arch: new URL('../assets/units/arch.glb', import.meta.url).href,
+  cav: new URL('../assets/units/cav.glb', import.meta.url).href,
 };
 export const MODELS = {};                      // unit type -> geometry for the crowd material, once loaded
 

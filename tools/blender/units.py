@@ -39,9 +39,10 @@ def bone_point(rig, bone, k=0.5):
 
 
 def deform(rig, bone):
-    """The matrix that carries a point fixed to a bone from the rest pose to the current pose (world space)."""
+    """The matrix that carries a point fixed to a bone from the soldier's rest pose (its own coordinates, as the base
+    soldier is built) to where the posed figure is in the world."""
     pb = rig.pose.bones[bone]
-    return rig.matrix_world @ pb.matrix @ pb.bone.matrix_local.inverted() @ rig.matrix_world.inverted()
+    return rig.matrix_world @ pb.matrix @ pb.bone.matrix_local.inverted()
 
 
 def tube(b, pts, radii, mat, n=4, up=Vector((0, 0, 1)), squash=1.0, caps=True):
@@ -140,7 +141,8 @@ def body_part(ob, v):
 
 
 def bake(name, col, pieces, sharp_angle=80, turn=0.0):
-    """pieces: (object, part), part a number, 'body' (from its bones) or a function of the vertex's world position.
+    """pieces: (object, part[, wave]). part: a number, 'body' (from its bones), 'rider' (the same, legs kept still)
+    or a function of the vertex's world position; wave (cloth flutter, 0 to 1): a number or such a function.
     turn: degrees about the vertical, so that the unit's aim ends up straight ahead. Returns one mesh object."""
     old = bpy.data.objects.get(name)
     if old:
@@ -150,7 +152,8 @@ def bake(name, col, pieces, sharp_angle=80, turn=0.0):
     lay_part = bm.verts.layers.float.new('_part')
     lay_wave = bm.verts.layers.float.new('_wave')
     mats = []
-    for ob, part in pieces:
+    for piece in pieces:
+        ob, part, wave = piece if len(piece) == 3 else (*piece, 0.0)
         ev = ob.evaluated_get(dg)
         me = ev.to_mesh(preserve_all_data_layers=True, depsgraph=dg)
         M = ob.matrix_world
@@ -158,8 +161,13 @@ def bake(name, col, pieces, sharp_angle=80, turn=0.0):
         for v in me.vertices:
             co = M @ v.co
             nv = bm.verts.new(co)
-            nv[lay_part] = body_part(ob, v) if part == 'body' else part(co) if callable(part) else part
-            nv[lay_wave] = 0.0
+            if part in ('body', 'rider'):
+                nv[lay_part] = body_part(ob, v)
+                if part == 'rider' and nv[lay_part] in (1, 2):
+                    nv[lay_part] = 0
+            else:
+                nv[lay_part] = part(co) if callable(part) else part
+            nv[lay_wave] = wave(co) if callable(wave) else wave
             vs.append(nv)
         for p in me.polygons:
             mname = me.materials[p.material_index].name if me.materials else 'tint'
@@ -330,7 +338,158 @@ def build_arch():
     return unit
 
 
-UNITS = {'spear': build_spear, 'arch': build_arch}
+def horse_ring(b, c, t, w, ht, hb):
+    """Half a cross-section of the horse (x >= 0): top, upper side, side, lower side, belly; t is the body's direction."""
+    t = Vector(t).normalized()
+    Z = Vector((0, 0, 1))
+    u = (Z - Z.dot(t) * t).normalized()                         # the back (dorsal) side
+    X = Vector((1, 0, 0))
+    c = Vector(c)
+    return [b.v(c + ht * u), b.v(c + 0.72 * w * X + 0.62 * ht * u), b.v(c + w * X - 0.05 * hb * u),
+            b.v(c + 0.72 * w * X - 0.65 * hb * u), b.v(c - hb * u)]
+
+
+def horse(col):
+    """A horse facing -Y: body, neck and head as one mirrored piece (all quads), the mane along the neck, ears;
+    the legs and the tail are separate pieces (see horse_legs, horse_tail)."""
+    b = sb.Builder(['horse', 'horse_dark', 'dark'])
+    R = [horse_ring(b, *spec) for spec in (
+        ((0, 0.70, 1.00), (0, -1, 0), 0.10, 0.10, 0.13),          # rump end
+        ((0, 0.62, 0.99), (0, -1, 0), 0.20, 0.17, 0.24),
+        ((0, 0.42, 0.97), (0, -1, 0), 0.235, 0.20, 0.28),         # haunch
+        ((0, 0.12, 0.93), (0, -1, 0), 0.24, 0.19, 0.30),          # barrel
+        ((0, -0.20, 0.95), (0, -1, 0.1), 0.23, 0.20, 0.29),       # chest, withers
+        ((0, -0.42, 1.06), (0, -0.8, 0.6), 0.18, 0.19, 0.22),     # base of the neck
+        ((0, -0.56, 1.28), (0, -0.45, 0.89), 0.13, 0.13, 0.15),
+        ((0, -0.66, 1.48), (0, -0.6, 0.8), 0.11, 0.105, 0.12),    # throat
+        ((0, -0.80, 1.56), (0, -0.95, -0.3), 0.105, 0.09, 0.13),  # poll, forehead
+        ((0, -0.91, 1.49), (0, -0.6, -0.8), 0.095, 0.08, 0.115),  # cheeks
+        ((0, -1.01, 1.33), (0, -0.45, -0.89), 0.075, 0.065, 0.08),  # muzzle
+    )]
+    b.half_cap(list(reversed(R[0])), (0, 0.73, 1.0), 'horse')
+    for i in range(len(R) - 1):
+        mane = 'dark' if 4 <= i <= 7 else 'horse'
+        b.bridge(R[i], R[i + 1], [mane, 'horse', 'horse', 'horse'], closed=False)
+    b.half_cap(R[-1], (0, -1.05, 1.28), 'horse_dark')
+    # ears, pricked up on the poll
+    base = Vector((0.055, -0.77, 1.635))
+    tube(b, [base, base + Vector((0.01, 0.01, 0.1))], [0.026, 0.008], 'horse', n=4, up=Vector((0, 1, 0)), squash=0.6)
+    ob = b.finish('horse_body', col, [])
+    m = ob.modifiers.new('Mirror', 'MIRROR')
+    m.use_axis[0] = True; m.use_clip = True; m.use_mirror_merge = True; m.merge_threshold = 0.001
+    return ob
+
+
+def horse_legs(col):
+    """Four legs tucked into the body: forelegs straight, hind legs with the hock bent back; dark lower legs, hooves."""
+    b = sb.Builder(['horse', 'horse_dark', 'dark'])
+    for sx in (1, -1):
+        x = 0.13 * sx
+        fore = [((x, -0.22, 0.95), 0.105), ((x, -0.24, 0.68), 0.08), ((x * 1.02, -0.24, 0.45), 0.055),
+                ((x * 1.02, -0.23, 0.13), 0.043), ((x * 1.02, -0.25, 0.0), 0.056)]
+        hind = [((x * 1.07, 0.42, 0.95), 0.125), ((x * 1.07, 0.47, 0.68), 0.095), ((x * 1.04, 0.53, 0.45), 0.058),
+                ((x * 1.02, 0.47, 0.13), 0.043), ((x * 1.02, 0.46, 0.0), 0.056)]
+        for leg in (fore, hind):
+            pts = [Vector(p) for p, _ in leg]
+            rings = []
+            u = Vector((0, -1, 0))
+            for k, (c, r) in enumerate(zip(pts, [r for _, r in leg])):
+                t = ((pts[min(k + 1, 4)] - pts[max(k - 1, 0)])).normalized()
+                uu = (u - u.dot(t) * t).normalized()
+                w = t.cross(uu)
+                rings.append([b.v(c + r * cos(radians(a)) * uu + r * sin(radians(a)) * w) for a in range(0, 360, 60)])
+            b.bridge(rings[0], rings[1], 'horse')
+            b.bridge(rings[1], rings[2], 'horse')
+            b.bridge(rings[2], rings[3], 'horse_dark')
+            b.bridge(rings[3], rings[4], 'dark')                 # hoof
+            b.cap6(list(reversed(rings[0])), 'horse')
+            b.cap6(rings[4], 'dark')
+    return b.finish('horse_legs', col, [])
+
+
+def horse_tail(col):
+    b = sb.Builder(['dark'])
+    pts = [Vector(p) for p in ((0, 0.70, 1.04), (0, 0.79, 0.95), (0, 0.84, 0.76), (0, 0.83, 0.55))]
+    tube(b, pts, [0.045, 0.06, 0.055, 0.02], 'dark', n=4, up=Vector((1, 0, 0)), squash=0.7)
+    return b.finish('horse_tail', col, [])
+
+
+def saddle_cloth(col):
+    """A cloth in the power's colour over the horse's back, hanging down both flanks."""
+    b = sb.Builder(['tint'])
+    rows = [[b.v((x, y, z)) for x, z in ((0, 1.148), (0.185, 1.108), (0.258, 0.98), (0.262, 0.80))] for y in (-0.2, 0.02, 0.24)]
+    b.bridge(rows[0], rows[1], 'tint', closed=False)
+    b.bridge(rows[1], rows[2], 'tint', closed=False)
+    ob = b.finish('cav_cloth', col, [])
+    m = ob.modifiers.new('Mirror', 'MIRROR')
+    m.use_axis[0] = True; m.use_clip = True; m.use_mirror_merge = True; m.merge_threshold = 0.001
+    s = ob.modifiers.new('Solidify', 'SOLIDIFY')
+    s.thickness = 0.016; s.offset = 1; s.use_even_offset = True
+    return ob
+
+
+def crest(col, name):
+    """A horsehair crest in the power's colour, front to back over the helmet."""
+    b = sb.Builder(['tint'])
+    pts = [Vector(p) for p in ((0, -0.15, 1.625), (0, -0.07, 1.705), (0, 0.05, 1.712), (0, 0.17, 1.64), (0, 0.23, 1.55))]
+    tube(b, pts, [0.03, 0.045, 0.045, 0.035, 0.02], 'tint', n=4, up=Vector((0, 0, 1)), squash=0.3)
+    return b.finish(name, col, [])
+
+
+def lance(col, name, through, direction, back=0.9, ahead=2.1):
+    b = sb.Builder(['wood', 'steel'])
+    d = Vector(direction).normalized()
+    side = d.cross(Vector((1, 0, 0))).normalized()
+    butt, end = through - d * back, through + d * ahead
+    tube(b, [butt, end], 0.026, 'wood', n=6, up=side)
+    blade = [b.v(end + d * 0.1 + 0.055 * cos(radians(a)) * side + 0.018 * sin(radians(a)) * d.cross(side)) for a in range(0, 360, 60)]
+    ring = [b.v(end + 0.026 * cos(radians(a)) * side + 0.026 * sin(radians(a)) * d.cross(side)) for a in range(0, 360, 60)]
+    b.bridge(ring, blade, 'steel')
+    tip = b.v(end + d * 0.32)
+    for i in range(6):
+        b.face((blade[i], blade[(i + 1) % 6], tip), 'steel')
+    return b.finish(name, col, [])
+
+
+def build_cav():
+    """Cavalryman: the base soldier seated on a horse, lance in the right hand, round shield on the left arm,
+    crested helmet; a saddle cloth in the power's colour."""
+    col = sb.collection('Units')
+    hb, legs, tail, cloth = horse(col), horse_legs(col), horse_tail(col), saddle_cloth(col)
+    rig, (body, skirt) = sb.build_base()
+    rig.location = (0, 0.0, 0.6)                          # into the saddle
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    for s, k in (('L', 1), ('R', -1)):
+        aim(rig, 'thigh.' + s, (0.65 * k, -0.55, -0.52))   # astride the barrel
+        aim(rig, 'shin.' + s, (0.1 * k, 0.25, -0.96))      # down the flanks
+        aim(rig, 'foot.' + s, (0.05 * k, -0.95, -0.3))
+    aim(rig, 'upper_arm.R', (-0.2, -0.3, -0.93))
+    aim(rig, 'forearm.R', (-0.05, -0.85, 0.5))
+    aim(rig, 'hand.R', (-0.05, -0.8, 0.6))
+    aim(rig, 'upper_arm.L', (0.25, -0.15, -0.95))
+    aim(rig, 'forearm.L', (0.05, -0.95, 0.25))
+    aim(rig, 'hand.L', (0.05, -0.95, 0.25))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    hand_r = bone_point(rig, 'hand.R', 0.45)
+    arm_l = bone_point(rig, 'forearm.L', 0.55)
+    hm = helmet(col, 'cav_helmet'); hm.matrix_world = deform(rig, 'head')
+    cr = crest(col, 'cav_crest'); cr.matrix_world = deform(rig, 'head')
+    sh = round_shield(col, 'cav_shield', arm_l + Vector((0.075, 0.0, 0.02)), yaw=64, radius=0.27, n=10)
+    ln = lance(col, 'cav_lance', hand_r, (-0.05, -0.7, 0.71))
+    gait = lambda co: 1 if (co.x > 0) == (co.y < 0) else 2      # diagonal pairs swing together
+    flutter = lambda co: max(0.0, min(1.0, (1.0 - co.z) / 0.45)) * 0.8
+    pieces = [(hb, 0), (legs, gait), (tail, 0, flutter), (cloth, 0), (body, 'rider'), (skirt, 0), (hm, 0), (cr, 0),
+              (sh, 0), (ln, 3)]
+    unit = bake('cav', col, pieces)
+    for ob, *_ in pieces:
+        ob.hide_set(True); ob.hide_render = True
+    rig.hide_set(True)
+    return unit
+
+
+UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav}
 
 if __name__ == '__main__':
     for key in [a for a in sys.argv[1:] if a in UNITS] or list(UNITS):

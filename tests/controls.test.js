@@ -30,16 +30,20 @@ export default async function controls() {
 
     // a tap on open ground plans the march; a second tap gives it
     await run(page, `(id) => { const T = window.__T; const a = T.GS.armies.find((x) => x.id === id); T.clearSel(); T.UI.sel = [a]; T.renderPanel(true); }`, setup.a);
-    const spot = await run(page, `(id) => { const T = window.__T; const a = T.GS.armies.find((x) => x.id === id);
+    // open ground the march can reach, whose spot on screen is clear of every army and city (their tap zones are wide)
+    const spot = await run(page, `(id) => { const T = window.__T; const a = T.GS.armies.find((x) => x.id === id), o = {};
       for (let r = 6; r < 12; r++) for (let k = 0; k < 24; k++) { const x = Math.round(a.x + Math.cos(k / 24 * 6.283) * r), y = Math.round(a.y + Math.sin(k / 24 * 6.283) * r), i = T.cellOf(x, y);
-        if (T.MAP.move[i] < Infinity && T.GS.cityAt[i] < 0 && T.findPath(a.x, a.y, x, y, a.owner)) return { x, y }; } return null; }`, setup.a);
+        if (!(T.MAP.move[i] < Infinity && T.GS.cityAt[i] < 0 && T.findPath(a.x, a.y, x, y, a.owner))) continue;
+        T.focusOn({ x, y: y + 2 }); T.CAM.x = T.CAM.tx; T.CAM.z = T.CAM.tz; T.CAM.d = T.CAM.td = 45; T.applyCamera();
+        T.projectCell(x, y, 0, o); const h = T.hitTest(o.x, o.y);
+        if (h && h.kind === 'prov') return { x, y }; } return null; }`, setup.a);
     await run(page, LOOK, [spot.x, spot.y + 2, 45]);
     await page.waitForTimeout(400);
     let p = await run(page, SCREEN, [spot.x, spot.y, 0]);
     const ground = await run(page, `([x, y]) => { const h = window.__T.hitTest(x, y); return h && h.kind; }`, [p.x, p.y]);
     await page.touchscreen.tap(p.x, p.y);
     const plan = await run(page, `() => { const T = window.__T, o = T.UI.order; T.updateLabels(); const f = document.querySelector('.lb.flag'); return { order: !!o && !o.h && o.ok, eta: o && Math.round(o.eta), flag: !!f && f.style.display !== 'none', panel: document.getElementById('panel').textContent.includes('Tap the standard again'), state: T.UI.sel[0].state }; }`);
-    check(ground === 'prov' && plan.order && plan.flag && plan.panel && plan.state === 'idle', `[phone] a tap on the map plants the standard and waits (about ${plan.eta} s of march, the army ${plan.state})`);
+    check(ground === 'prov' && plan.order && plan.flag && plan.panel && plan.state === 'idle', `[phone] a tap on the map plants the standard and waits (about ${plan.eta} s of march, the army ${plan.state})${ground === 'prov' && plan.order && plan.flag && plan.panel ? '' : ` [hit ${ground}, order ${plan.order}, flag ${plan.flag}, panel ${plan.panel}]`}`);
     p = await run(page, SCREEN, [spot.x, spot.y, 0]);
     await page.touchscreen.tap(p.x + 4, p.y - 18);   // on the cloth of the standard
     const go = await run(page, `() => { const T = window.__T, a = T.UI.sel[0]; return { order: T.UI.order, state: a.state, path: !!a.path }; }`);

@@ -149,9 +149,9 @@ export function buildCrowdGeos() {
     { geo: new THREE.CylinderGeometry(0.04, 0.05, 0.11, 8), color: W, tint: 1, pos: [0, 0.29, -0.02] },
     head(0.37), helm(0.376),
     { geo: box(0.012, 0.035, 0.07), color: W, tint: 1, pos: [0, 0.425, -0.02] },
-    { geo: cyl(0.055, 0.055, 0.012, 10), color: W, tint: 1, rot: [0, 0, Math.PI / 2], pos: [-0.055, 0.28, -0.01] },
-    { geo: cyl(0.006, 0.006, 0.55, 4), color: WOOD, pos: [0.06, 0.38, 0.08], rot: [0.75, 0, 0], part: 3 },
-    { geo: cone(0.012, 0.05, 4), color: STEEL, pos: [0.06, 0.58, 0.28], rot: [0.75, 0, 0], part: 3 },
+    { geo: cyl(0.055, 0.055, 0.012, 10), color: W, tint: 1, rot: [0, 0, Math.PI / 2], pos: [0.055, 0.28, -0.01] },     // shield on the left arm
+    { geo: cyl(0.006, 0.006, 0.55, 4), color: WOOD, pos: [-0.06, 0.38, 0.08], rot: [0.75, 0, 0], part: 3 },         // lance in the right hand, as up close
+    { geo: cone(0.012, 0.05, 4), color: STEEL, pos: [-0.06, 0.58, 0.28], rot: [0.75, 0, 0], part: 3 },
   ]);
   // siege engine (onager) with a throwing arm and a small pennant
   G.siege = mergeX([
