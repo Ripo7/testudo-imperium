@@ -144,7 +144,8 @@ def body_part(ob, v):
 def bake(name, col, pieces, sharp_angle=80, turn=0.0):
     """pieces: (object, part[, wave]). part: a number, 'body' (from its bones), 'rider' (the same, legs kept still),
     'walker' (legs only, no weapon arm)
-    or a function of the vertex's world position; wave (cloth flutter, 0 to 1): a number or such a function.
+    or a function of the vertex's world position; wave (cloth flutter, 0 to 1): a number or such a function;
+    post: a matrix applied after both (to mirror a posed figure, say).
     turn: degrees about the vertical, so that the unit's aim ends up straight ahead. Returns one mesh object."""
     old = bpy.data.objects.get(name)
     if old:
@@ -155,14 +156,14 @@ def bake(name, col, pieces, sharp_angle=80, turn=0.0):
     lay_wave = bm.verts.layers.float.new('_wave')
     mats = []
     for piece in pieces:
-        ob, part, wave = piece if len(piece) == 3 else (*piece, 0.0)
+        ob, part, wave, post = (*piece, 0.0, None)[:4] if len(piece) == 2 else (*piece, None)[:4]
         ev = ob.evaluated_get(dg)
         me = ev.to_mesh(preserve_all_data_layers=True, depsgraph=dg)
         M = ob.matrix_world
         vs = []
         for v in me.vertices:
             co = M @ v.co
-            nv = bm.verts.new(co)
+            nv = bm.verts.new(post @ co if post else co)
             if part in ('body', 'rider', 'walker'):
                 nv[lay_part] = body_part(ob, v)
                 if (part == 'rider' and nv[lay_part] in (1, 2)) or (part == 'walker' and nv[lay_part] == 3):
@@ -242,15 +243,16 @@ def build_spear():
     return unit
 
 
-def hood(col, name):
-    """A cloth hood in the power's colour: over the head and down the nape, the face left open."""
-    b = sb.Builder(['tint'])
+def hood(col, name, bands=('tint', 'tint', 'tint')):
+    """A cloth hood in the power's colour: over the head and down the nape, the face left open.
+    bands: the materials of its lower band, upper band and crown (stripes for an Egyptian headdress)."""
+    b = sb.Builder(sorted(set(bands)))
     rim = [b.v(p) for p in ((0, -0.212, 1.50), (0.168, -0.162, 1.36), (0.218, -0.02, 1.25), (0.172, 0.152, 1.17), (0, 0.202, 1.15))]
     L1 = [b.v(p) for p in ((0, -0.214, 1.565), (0.182, -0.152, 1.47), (0.23, 0.0, 1.40), (0.182, 0.167, 1.33), (0, 0.217, 1.30))]
     L2 = [b.v(p) for p in ((0, -0.158, 1.618), (0.138, -0.116, 1.598), (0.178, 0.0, 1.566), (0.142, 0.136, 1.546), (0, 0.178, 1.526))]
-    b.bridge(rim, L1, 'tint', closed=False)
-    b.bridge(L1, L2, 'tint', closed=False)
-    b.half_cap(L2, (0, 0.01, 1.652), 'tint')
+    b.bridge(rim, L1, bands[0], closed=False)
+    b.bridge(L1, L2, bands[1], closed=False)
+    b.half_cap(L2, (0, 0.01, 1.652), bands[2])
     ob = b.finish(name, col, [])
     m = ob.modifiers.new('Mirror', 'MIRROR')
     m.use_axis[0] = True; m.use_clip = True; m.use_mirror_merge = True; m.merge_threshold = 0.001
@@ -259,10 +261,9 @@ def hood(col, name):
     return ob
 
 
-def quiver(col, name):
-    """A leather quiver on the back, its mouth by the right shoulder, three fletchings showing."""
+def quiver(col, name, lo=Vector((0.11, 0.205, 0.78)), hi=Vector((-0.04, 0.215, 1.2))):
+    """A leather quiver (by default on the back, its mouth by the right shoulder), three fletchings showing."""
     b = sb.Builder(['leather', 'linen'])
-    lo, hi = Vector((0.11, 0.205, 0.78)), Vector((-0.04, 0.215, 1.2))
     axis = (hi - lo).normalized()
     tube(b, [lo, hi], [0.05, 0.056], 'leather', n=6, up=Vector((0, 1, 0)))
     for k, off in enumerate((Vector((0.018, -0.012, 0)), Vector((-0.02, 0.0, 0)), Vector((0.0, 0.022, 0)))):
@@ -271,15 +272,10 @@ def quiver(col, name):
     return b.finish(name, col, [])
 
 
-def build_arch():
-    """Archer: turned side-on, bow arm straight out, the string drawn to the chin; hood and quiver.
-    The whole figure is then turned so that the arrow points straight ahead."""
-    rig, (body, skirt) = sb.build_base()
-    col = sb.collection('Units')
+def draw_bow_pose(rig, aim_dir):
+    """Pose an archer (the rig in pose mode): turned side-on along aim_dir, bow arm straight out, the string drawn to
+    the chin. Returns the anchor (the drawing hand, by the chin) and the grip."""
     Z = Vector((0, 0, 1))
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.mode_set(mode='POSE')
-    aim_dir = Vector((0.6, -0.8, 0.0))                 # the arrow's direction before the final turn (front-left)
     sb.rotate(rig, 'spine', Z, -25); sb.rotate(rig, 'chest', Z, -28)     # shoulders into the line of the shot
     sb.rotate(rig, 'neck', Z, 45); sb.rotate(rig, 'head', Z, 45)          # looking along the arrow
     sb.rotate(rig, 'thigh.L', Vector((0, 1, 0)), -6); sb.rotate(rig, 'thigh.R', Vector((0, 1, 0)), 6)   # feet apart
@@ -303,18 +299,23 @@ def build_arch():
     EL = rig.matrix_world @ rig.pose.bones['forearm.R'].head
     aim(rig, 'forearm.R', A - EL)
     aim(rig, 'hand.R', aim_dir + Vector((0, 0, -0.2)))
-    bpy.ops.object.mode_set(mode='OBJECT')
+    return A, G
 
+
+def bow_pieces(col, prefix, A, G, aim_dir):
+    """Bow, drawn string and nocked arrow for an archer posed by draw_bow_pose, as pieces for bake()."""
+    Z = Vector((0, 0, 1))
+    right = Vector((aim_dir.y, -aim_dir.x, 0))
     # bow: a limb bent back toward the archer above and below the grip
     b = sb.Builder(['bow', 'linen', 'wood', 'steel', 'tint'])
     pts = [G + Vector((0, 0, 0.6 * t)) - aim_dir * 0.13 * t * t for t in [k / 4 - 1 for k in range(9)]]
     tube(b, pts, [0.012 + 0.006 * (1 - abs(k / 4 - 1)) for k in range(9)], 'bow', n=4, up=aim_dir, squash=1.8)
-    bow = b.finish('arch_bow', col, [])
+    bow = b.finish(prefix + '_bow', col, [])
     # string, drawn from both tips to the archer's hand
     b = sb.Builder(['linen'])
     tube(b, [pts[-1], A], 0.0055, 'linen', n=4, up=aim_dir)
     tube(b, [A, pts[0]], 0.0055, 'linen', n=4, up=aim_dir)
-    string = b.finish('arch_string', col, [])
+    string = b.finish(prefix + '_string', col, [])
     # arrow: shaft, iron head, fletching in the power's colour
     b = sb.Builder(['wood', 'steel', 'tint'])
     tail, head = A - aim_dir * 0.03, G + aim_dir * 0.17
@@ -326,15 +327,28 @@ def build_arch():
         b.face((base[i], base[(i + 1) % 4], tip), 'steel')
     for up in (Z, right):
         tube(b, [tail + aim_dir * 0.02, tail + aim_dir * 0.1], 0.022, 'tint', n=4, up=up, squash=0.15)
-    arrow = b.finish('arch_arrow', col, [])
+    arrow = b.finish(prefix + '_arrow', col, [])
+    near_hand = lambda co: 3 if (co - A).length < 0.03 else 0    # the string's middle follows the drawing hand
+    return [(bow, 0), (string, near_hand), (arrow, 3)]
 
+
+def build_arch():
+    """Archer: turned side-on, bow arm straight out, the string drawn to the chin; hood and quiver.
+    The whole figure is then turned so that the arrow points straight ahead."""
+    rig, (body, skirt) = sb.build_base()
+    col = sb.collection('Units')
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    aim_dir = Vector((0.6, -0.8, 0.0))                 # the arrow's direction before the final turn (front-left)
+    A, G = draw_bow_pose(rig, aim_dir)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bow, string, arrow = bow_pieces(col, 'arch', A, G, aim_dir)
     hd = hood(col, 'arch_hood'); hd.matrix_world = deform(rig, 'head')
     qv = quiver(col, 'arch_quiver'); qv.matrix_world = deform(rig, 'chest')
-    near_hand = lambda co: 3 if (co - A).length < 0.03 else 0    # the string's middle follows the drawing hand
-    pieces = [(body, 'body'), (skirt, 0), (hd, 0), (qv, 0), (bow, 0), (string, near_hand), (arrow, 3)]
+    pieces = [(body, 'body'), (skirt, 0), (hd, 0), (qv, 0), bow, string, arrow]
     turn = degrees(-pi / 2 - atan2(aim_dir.y, aim_dir.x))
     unit = bake('arch', col, pieces, turn=turn)
-    for ob, _ in pieces:
+    for ob, *_ in pieces:
         ob.hide_set(True); ob.hide_render = True
     rig.hide_set(True)
     return unit
@@ -351,7 +365,7 @@ def horse_ring(b, c, t, w, ht, hb):
             b.v(c + 0.72 * w * X - 0.65 * hb * u), b.v(c - hb * u)]
 
 
-def horse(col):
+def horse(col, name='horse_body'):
     """A horse facing -Y: body, neck and head as one mirrored piece (all quads), the mane along the neck, ears;
     the legs and the tail are separate pieces (see horse_legs, horse_tail)."""
     b = sb.Builder(['horse', 'horse_dark', 'dark'])
@@ -376,13 +390,13 @@ def horse(col):
     # ears, pricked up on the poll
     base = Vector((0.055, -0.77, 1.635))
     tube(b, [base, base + Vector((0.01, 0.01, 0.1))], [0.026, 0.008], 'horse', n=4, up=Vector((0, 1, 0)), squash=0.6)
-    ob = b.finish('horse_body', col, [])
+    ob = b.finish(name, col, [])
     m = ob.modifiers.new('Mirror', 'MIRROR')
     m.use_axis[0] = True; m.use_clip = True; m.use_mirror_merge = True; m.merge_threshold = 0.001
     return ob
 
 
-def horse_legs(col):
+def horse_legs(col, name='horse_legs'):
     """Four legs tucked into the body: forelegs straight, hind legs with the hock bent back; dark lower legs, hooves."""
     b = sb.Builder(['horse', 'horse_dark', 'dark'])
     for sx in (1, -1):
@@ -406,23 +420,23 @@ def horse_legs(col):
             b.bridge(rings[3], rings[4], 'dark')                 # hoof
             b.cap6(list(reversed(rings[0])), 'horse')
             b.cap6(rings[4], 'dark')
-    return b.finish('horse_legs', col, [])
+    return b.finish(name, col, [])
 
 
-def horse_tail(col):
+def horse_tail(col, name='horse_tail'):
     b = sb.Builder(['dark'])
     pts = [Vector(p) for p in ((0, 0.70, 1.04), (0, 0.79, 0.95), (0, 0.84, 0.76), (0, 0.83, 0.55))]
     tube(b, pts, [0.045, 0.06, 0.055, 0.02], 'dark', n=4, up=Vector((1, 0, 0)), squash=0.7)
-    return b.finish('horse_tail', col, [])
+    return b.finish(name, col, [])
 
 
-def saddle_cloth(col):
+def saddle_cloth(col, name='cav_cloth'):
     """A cloth in the power's colour over the horse's back, hanging down both flanks."""
     b = sb.Builder(['tint'])
     rows = [[b.v((x, y, z)) for x, z in ((0, 1.148), (0.185, 1.108), (0.258, 0.98), (0.262, 0.80))] for y in (-0.2, 0.02, 0.24)]
     b.bridge(rows[0], rows[1], 'tint', closed=False)
     b.bridge(rows[1], rows[2], 'tint', closed=False)
-    ob = b.finish('cav_cloth', col, [])
+    ob = b.finish(name, col, [])
     m = ob.modifiers.new('Mirror', 'MIRROR')
     m.use_axis[0] = True; m.use_clip = True; m.use_mirror_merge = True; m.merge_threshold = 0.001
     s = ob.modifiers.new('Solidify', 'SOLIDIFY')
@@ -715,7 +729,124 @@ def build_legT():
     return legionary(True)
 
 
-UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav, 'siege': build_siege, 'leg': build_leg, 'legT': build_legT}
+def spoked_wheel(b, c, r, n=12, spokes=6):
+    """A chariot wheel turning about X: a rim of n segments, a hub, spokes."""
+    c = Vector(c)
+    X = Vector((1, 0, 0))
+    rings = []
+    for k in range(n):
+        a = radians(360 * k / n)
+        radial = Vector((0, cos(a), sin(a)))
+        p = c + r * radial
+        rings.append([b.v(p + 0.03 * cos(radians(q)) * radial + 0.03 * sin(radians(q)) * X) for q in (45, 135, 225, 315)])
+    for k in range(n):
+        b.bridge(rings[k], rings[(k + 1) % n], 'wood')
+    beam(b, c - X * 0.07, c + X * 0.07, 0.05, 0.05, 'gold')      # hub
+    for k in range(spokes // 2):
+        a = radians(180 * k / (spokes // 2))
+        d = Vector((0, cos(a), sin(a)))
+        beam(b, c - d * (r - 0.02), c + d * (r - 0.02), 0.014, 0.014, 'wood', up=X)
+
+
+def nemes(col, name):
+    """The striped royal headdress of Egypt's chariot crews: blue and gold bands over the head and nape."""
+    return hood(col, name, bands=('nemes', 'gold', 'nemes'))
+
+
+def build_char():
+    """Chariot (Egypt): two horses under a yoke, a car in the power's colour with gold rails on two six-spoke wheels,
+    a driver in white linen at the reins and an archer shooting out to the right; both in the striped headdress."""
+    col = sb.collection('Units')
+    S = 0.82                                             # the team's horses are a little smaller than a cavalry horse
+    pieces = []
+    for k, x in enumerate((0.27, -0.27)):
+        M = Matrix.Translation((x, -0.95, 0)) @ Matrix.Scale(S, 4)
+        hb, legs, tail = horse(col, f'char_horse{k}'), horse_legs(col, f'char_legs{k}'), horse_tail(col, f'char_tail{k}')
+        cloth = saddle_cloth(col, f'char_cloth{k}')
+        b = sb.Builder(['tint'])                          # a plume on the poll
+        tube(b, [Vector(p) for p in ((0, -0.79, 1.64), (0, -0.76, 1.8), (0, -0.7, 1.92))], [0.03, 0.05, 0.03], 'tint', n=4, up=Vector((1, 0, 0)), squash=0.5)
+        plume = b.finish(f'char_plume{k}', col, [])
+        for ob in (hb, legs, tail, cloth, plume):
+            ob.matrix_world = M
+        cy = -0.95 + 0.1 * S
+        gait = lambda co, x=x, cy=cy: 1 if (co.x > x) == (co.y < cy) else 2
+        flutter = lambda co: max(0.0, min(1.0, (S - co.z) / (0.45 * S))) * 0.8
+        pieces += [(hb, 0), (legs, gait), (tail, 0, flutter), (cloth, 0), (plume, 0, lambda co: max(0.0, min(1.0, (co.z - 1.38) / 0.2)) * 0.6)]
+
+    # the car, the wheels, axle, pole and yoke
+    b = sb.Builder(['tint', 'gold', 'wood', 'dark'])
+    Y, Z = Vector((0, 1, 0)), Vector((0, 0, 1))
+    beam(b, (-0.42, 0.38, 0.555), (0.42, 0.38, 0.555), 0.28, 0.025, 'wood')                 # floor
+    beam(b, (-0.42, 0.12, 0.79), (0.42, 0.12, 0.79), 0.02, 0.21, 'tint')                    # front, painted
+    beam(b, (-0.44, 0.12, 1.0), (0.44, 0.12, 1.0), 0.03, 0.025, 'gold', up=Z)               # front rail
+    beam(b, (-0.42, 0.115, 0.76), (0.42, 0.115, 0.76), 0.024, 0.02, 'gold', up=Z)           # a gold band across it
+    for sx in (1, -1):
+        beam(b, (0.42 * sx, 0.12, 0.74), (0.42 * sx, 0.56, 0.74), 0.02, 0.16, 'tint', up=Z)  # sides
+        beam(b, (0.42 * sx, 0.12, 0.9), (0.42 * sx, 0.58, 0.9), 0.025, 0.022, 'gold', up=Z)  # side rails
+        spoked_wheel(b, (0.54 * sx, 0.45, 0.38), 0.36)
+    beam(b, (-0.64, 0.45, 0.38), (0.64, 0.45, 0.38), 0.03, 0.03, 'dark', up=Y)              # axle
+    beam(b, (0, 0.2, 0.53), (0, -1.12, 0.93), 0.03, 0.03, 'wood', up=Z)                      # pole
+    beam(b, (-0.47, -1.12, 0.96), (0.47, -1.12, 0.96), 0.035, 0.035, 'wood', up=Z)          # yoke
+    car = b.finish('char_car', col, [])
+    pieces.append((car, 0))
+
+    # the driver, at the reins, in white linen
+    rig, (body, skirt) = sb.build_base()
+    for ob in (rig, body, skirt):                        # renamed, so that building the archer's body keeps them
+        ob.name = ob.name + '_driver'
+    for ob in (body, skirt):
+        for i, m in enumerate(ob.data.materials):
+            if m.name == 'tint':
+                ob.data.materials[i] = sb.material('linen')
+    rig.location = (0.2, 0.36, 0.58)
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    hands = {}
+    for s_, k in (('L', 1), ('R', -1)):
+        hold = Vector((0.2 + 0.12 * k, 0.06, 1.26))
+        sh = rig.matrix_world @ rig.pose.bones['upper_arm.' + s_].head
+        aim(rig, 'upper_arm.' + s_, (hold - sh) + Vector((0.05 * k, 0.12, -0.25)))
+        el = rig.matrix_world @ rig.pose.bones['forearm.' + s_].head
+        aim(rig, 'forearm.' + s_, hold - el)
+        aim(rig, 'hand.' + s_, hold - el)
+        hands[s_] = bone_point(rig, 'hand.' + s_, 0.5)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    hd = nemes(col, 'char_driver_nemes'); hd.matrix_world = deform(rig, 'head')
+    pieces += [(body, 0), (skirt, 0), (hd, 0)]
+    # reins, from each horse's mouth to a hand
+    b = sb.Builder(['leather'])
+    for x, s_ in ((0.27, 'L'), (-0.27, 'R')):
+        mouth = Vector((x, -0.95 - 1.0 * S, 1.33 * S))
+        tube(b, [mouth, hands[s_]], 0.007, 'leather', n=4, up=Z)
+    reins = b.finish('char_reins', col, [])
+    pieces.append((reins, 0))
+
+    # the archer: posed on the left and drawing to the front-left, then mirrored to stand on the right and shoot
+    # out to that side (so he is drawn left-handed); his legs stay still in the car
+    rig2, (body2, skirt2) = sb.build_base()
+    rig2.location = (0.2, 0.42, 0.58)
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = rig2
+    bpy.ops.object.mode_set(mode='POSE')
+    aim_dir = Vector((0.6, -0.8, 0.0))
+    A, G = draw_bow_pose(rig2, aim_dir)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    mirror = Matrix.Scale(-1, 4, (1, 0, 0))
+    hd2 = nemes(col, 'char_archer_nemes'); hd2.matrix_world = deform(rig2, 'head')
+    qv = quiver(col, 'char_quiver', lo=Vector((0.47, 0.5, 0.62)), hi=Vector((0.5, 0.3, 1.05)))    # on the car's side
+    archer = [(body2, 'rider'), (skirt2, 0), (hd2, 0), (qv, 0)] + bow_pieces(col, 'char', A, G, aim_dir)
+    pieces += [(ob, part, *rest, mirror) if rest else (ob, part, 0.0, mirror) for ob, part, *rest in archer]
+
+    unit = bake('char', col, pieces)
+    for ob, *_ in pieces:
+        ob.hide_set(True); ob.hide_render = True
+    rig.hide_set(True); rig2.hide_set(True)
+    return unit
+
+
+UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav, 'siege': build_siege, 'leg': build_leg, 'legT': build_legT,
+         'char': build_char}
 
 if __name__ == '__main__':
     for key in [a for a in sys.argv[1:] if a in UNITS] or list(UNITS):
