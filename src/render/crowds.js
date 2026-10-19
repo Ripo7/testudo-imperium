@@ -130,9 +130,9 @@ export function buildCrowdGeos() {
   G.arch = mergeX([
     ...legs(0.1, 0.024), torso(0.165), head(0.27),
     { geo: new THREE.SphereGeometry(0.052, 8, 5, 0, TAU, 0, Math.PI * 0.6), color: W, tint: 1, pos: [0, 0.278, -0.004] },
-    { geo: new THREE.TorusGeometry(0.13, 0.007, 4, 12, 2.3), color: '#5a3a22', rot: [0, Math.PI / 2, -1.15], pos: [-0.06, 0.2, 0.07], part: 3 },
-    { geo: cyl(0.022, 0.022, 0.15, 6), color: LEATHER, pos: [0.03, 0.21, -0.06], rot: [0.35, 0, 0.2] },
-    { geo: cyl(0.003, 0.003, 0.05, 3), color: '#e8e0d0', pos: [0.04, 0.3, -0.09], rot: [0.35, 0, 0.2] },
+    { geo: new THREE.TorusGeometry(0.13, 0.007, 4, 12, 2.3), color: '#5a3a22', rot: [0, -Math.PI / 2, 1.15], pos: [0.06, 0.2, 0.07], part: 3 },   // bow in the left hand, as up close
+    { geo: cyl(0.022, 0.022, 0.15, 6), color: LEATHER, pos: [-0.03, 0.21, -0.06], rot: [0.35, 0, -0.2] },
+    { geo: cyl(0.003, 0.003, 0.05, 3), color: '#e8e0d0', pos: [-0.04, 0.3, -0.09], rot: [0.35, 0, -0.2] },
   ]);
   // cavalry: horse + rider with lance and small shield
   G.cav = mergeX([
@@ -149,9 +149,9 @@ export function buildCrowdGeos() {
     { geo: new THREE.CylinderGeometry(0.04, 0.05, 0.11, 8), color: W, tint: 1, pos: [0, 0.29, -0.02] },
     head(0.37), helm(0.376),
     { geo: box(0.012, 0.035, 0.07), color: W, tint: 1, pos: [0, 0.425, -0.02] },
-    { geo: cyl(0.055, 0.055, 0.012, 10), color: W, tint: 1, rot: [0, 0, Math.PI / 2], pos: [-0.055, 0.28, -0.01] },
-    { geo: cyl(0.006, 0.006, 0.55, 4), color: WOOD, pos: [0.06, 0.38, 0.08], rot: [0.75, 0, 0], part: 3 },
-    { geo: cone(0.012, 0.05, 4), color: STEEL, pos: [0.06, 0.58, 0.28], rot: [0.75, 0, 0], part: 3 },
+    { geo: cyl(0.055, 0.055, 0.012, 10), color: W, tint: 1, rot: [0, 0, Math.PI / 2], pos: [0.055, 0.28, -0.01] },     // shield on the left arm
+    { geo: cyl(0.006, 0.006, 0.55, 4), color: WOOD, pos: [-0.06, 0.38, 0.08], rot: [0.75, 0, 0], part: 3 },         // lance in the right hand, as up close
+    { geo: cone(0.012, 0.05, 4), color: STEEL, pos: [-0.06, 0.58, 0.28], rot: [0.75, 0, 0], part: 3 },
   ]);
   // siege engine (onager) with a throwing arm and a small pennant
   G.siege = mergeX([
