@@ -7,7 +7,8 @@
 # Each unit: the base soldier posed with its skeleton, plus its gear, baked into one mesh and written to
 # src/assets/units/<key>.glb. What the game reads from the file:
 #   - one plain colour per material (no textures); the material `tint` takes the power's colour;
-#   - `_part` per vertex: 1 and 2 the legs (they swing on the march), 3 the weapon arm and its weapon (it thrusts);
+#   - `_part` per vertex: 1 and 2 the legs (they swing on the march), 3 the weapon arm and its weapon (it thrusts),
+#     4 a siege engine's throwing arm (it swings back and throws);
 #   - `_wave` per vertex: how much cloth flutters (0 to 1);
 #   - Blender metres, feet at 0, facing -Y (Blender's front view); the game scales by 0.2.
 import os, sys
@@ -141,7 +142,8 @@ def body_part(ob, v):
 
 
 def bake(name, col, pieces, sharp_angle=80, turn=0.0):
-    """pieces: (object, part[, wave]). part: a number, 'body' (from its bones), 'rider' (the same, legs kept still)
+    """pieces: (object, part[, wave]). part: a number, 'body' (from its bones), 'rider' (the same, legs kept still),
+    'walker' (legs only, no weapon arm)
     or a function of the vertex's world position; wave (cloth flutter, 0 to 1): a number or such a function.
     turn: degrees about the vertical, so that the unit's aim ends up straight ahead. Returns one mesh object."""
     old = bpy.data.objects.get(name)
@@ -161,9 +163,9 @@ def bake(name, col, pieces, sharp_angle=80, turn=0.0):
         for v in me.vertices:
             co = M @ v.co
             nv = bm.verts.new(co)
-            if part in ('body', 'rider'):
+            if part in ('body', 'rider', 'walker'):
                 nv[lay_part] = body_part(ob, v)
-                if part == 'rider' and nv[lay_part] in (1, 2):
+                if (part == 'rider' and nv[lay_part] in (1, 2)) or (part == 'walker' and nv[lay_part] == 3):
                     nv[lay_part] = 0
             else:
                 nv[lay_part] = part(co) if callable(part) else part
@@ -489,7 +491,136 @@ def build_cav():
     return unit
 
 
-UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav}
+def beam(b, p0, p1, hw, hh, mat, up=Vector((0, 0, 1))):
+    """A squared timber from p0 to p1, hw wide and hh high (half sizes), its faces square to `up`."""
+    p0, p1 = Vector(p0), Vector(p1)
+    t = (p1 - p0).normalized()
+    u = Vector(up)
+    if abs(u.dot(t)) > 0.99:
+        u = Vector((0, 1, 0))
+    u = (u - u.dot(t) * t).normalized()
+    w = t.cross(u)
+    corners = [(1, 1), (-1, 1), (-1, -1), (1, -1)]
+    r0 = [b.v(p0 + hw * sx * w + hh * sy * u) for sx, sy in corners]
+    r1 = [b.v(p1 + hw * sx * w + hh * sy * u) for sx, sy in corners]
+    b.bridge(r0, r1, mat)
+    b.face(tuple(reversed(r0)), mat)
+    b.face(tuple(r1), mat)
+
+
+def wheel(b, c, r, thick, n=12):
+    """A solid wheel turning about X: wooden faces, an iron tyre, a hub."""
+    c = Vector(c)
+    def ring(x):
+        return [b.v(c + Vector((x, r * cos(radians(360 * k / n)), r * sin(radians(360 * k / n))))) for k in range(n)]
+    inner, outer = ring(-thick / 2), ring(thick / 2)
+    b.bridge(inner, outer, 'dark')                               # tyre
+    for face_ring in (list(reversed(inner)), outer):              # a 12-sided face in five quads
+        for k in (0, 3, 6, 9):
+            b.face((face_ring[k], face_ring[k + 1], face_ring[k + 2], face_ring[(k + 3) % n]), 'wood')
+        b.face((face_ring[0], face_ring[3], face_ring[6], face_ring[9]), 'wood')
+    side = 1 if c.x > 0 else -1
+    beam(b, c, c + Vector((side * (thick / 2 + 0.05), 0, 0)), 0.045, 0.045, 'steel')   # hub
+
+
+def quad_sphere(b, c, r, mat):
+    """A round stone made of 24 quads (a cube's faces split in four, pushed out to a sphere)."""
+    c = Vector(c)
+    vs = {}
+    def v(key):
+        if key not in vs:
+            vs[key] = b.v(c + r * Vector(key).normalized())
+        return vs[key]
+    for axis in range(3):
+        for sgn in (-1, 1):
+            a1, a2 = [i for i in range(3) if i != axis]
+            for i in (-1, 0):
+                for j in (-1, 0):
+                    quad = []
+                    for di, dj in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                        key = [0, 0, 0]
+                        key[axis] = sgn; key[a1] = i + di; key[a2] = j + dj
+                        quad.append(v(tuple(key)))
+                    b.face(quad if sgn > 0 else list(reversed(quad)), mat)
+
+
+def pennant(b, top, length=0.5, height=0.3, segs=4):
+    """A flag in the power's colour off the pole at `top`, along +X; returns its vertices with their distance out."""
+    out = []
+    cols = []
+    for k in range(segs + 1):
+        x = length * k / segs
+        col_v = [b.v(Vector(top) + Vector((x, dy, dz))) for dz, dy in ((0, -0.008), (0, 0.008), (-height, 0.008), (-height, -0.008))]
+        cols.append(col_v)
+        out += [(v, k / segs) for v in col_v]
+    for k in range(segs):
+        b.bridge(cols[k], cols[k + 1], 'tint')
+    b.face(tuple(reversed(cols[0])), 'tint')
+    b.face(tuple(cols[-1]), 'tint')
+    return out
+
+
+def build_siege():
+    """Siege engine: an onager on four wheels, its arm up with a stone in the cup, a pennant in the power's colour,
+    and a crewman pushing from behind. The arm swings in a fight (part 4); the crewman's legs walk."""
+    col = sb.collection('Units')
+    b = sb.Builder(['wood', 'dark', 'steel', 'rope', 'leather', 'tint'])
+    X, Z = Vector((1, 0, 0)), Vector((0, 0, 1))
+    for sx in (1, -1):
+        beam(b, (0.32 * sx, -0.95, 0.4), (0.32 * sx, 0.95, 0.4), 0.06, 0.07, 'wood')              # side beams
+        wheel(b, (0.44 * sx, -0.62, 0.27), 0.27, 0.08)
+        wheel(b, (0.44 * sx, 0.62, 0.27), 0.27, 0.08)
+        beam(b, (0.3 * sx, -0.2, 0.46), (0.3 * sx, -0.2, 1.3), 0.05, 0.05, 'wood', up=Vector((0, 1, 0)))   # uprights
+        beam(b, (0.3 * sx, 0.1, 0.45), (0.3 * sx, -0.18, 1.0), 0.035, 0.035, 'wood', up=X)               # braces
+        beam(b, (0.32 * sx, 0.95, 0.42), (0.3 * sx, 1.2, 0.8), 0.035, 0.035, 'wood', up=X)               # push handles
+    for y in (-0.88, 0.88):
+        beam(b, (-0.36, y, 0.4), (0.36, y, 0.4), 0.06, 0.06, 'wood', up=Vector((0, 1, 0)))              # cross beams
+    for y in (-0.62, 0.62):
+        beam(b, (-0.5, y, 0.27), (0.5, y, 0.27), 0.035, 0.035, 'steel', up=Vector((0, 1, 0)))           # axles
+    beam(b, (-0.36, -0.2, 1.3), (0.36, -0.2, 1.3), 0.06, 0.06, 'wood', up=Vector((0, 1, 0)))             # buffer beam
+    beam(b, (-0.2, -0.13, 1.27), (0.2, -0.13, 1.27), 0.05, 0.06, 'leather', up=Vector((0, 1, 0)))       # its cushion
+    tube(b, [Vector((-0.27, 0.25, 0.47)), Vector((0.27, 0.25, 0.47))], 0.11, 'rope', n=6, up=Z)          # torsion skein
+    tube(b, [Vector((-0.3, 0.8, 0.55)), Vector((0.3, 0.8, 0.55))], 0.06, 'wood', n=6, up=Z)              # winch
+    for sx in (1, -1):
+        beam(b, (0.33 * sx, 0.8, 0.55), (0.33 * sx, 0.8, 0.75), 0.025, 0.025, 'wood', up=Vector((0, 1, 0)))
+    tube(b, [Vector((0.34, 0.92, 0.45)), Vector((0.34, 0.92, 2.05))], 0.022, 'wood', n=4, up=Vector((0, 1, 0)))   # pennant pole
+    flag_wave = {tuple(round(c, 4) for c in v.co): w for v, w in pennant(b, (0.36, 0.92, 2.0))}
+    frame = b.finish('siege_frame', col, [])
+
+    # the throwing arm, standing up from the skein, a cup and a stone at its top
+    b = sb.Builder(['wood', 'rope', 'steel'])
+    top = Vector((0, 0.42, 1.72))
+    beam(b, (0, 0.25, 0.42), top, 0.045, 0.055, 'wood', up=Vector((0, -1, 0)))
+    tube(b, [top + Vector((0, -0.05, -0.02)), top + Vector((0, -0.05, 0.06))], 0.11, 'rope', n=6, up=Vector((0, 1, 0)))   # sling cup
+    quad_sphere(b, top + Vector((0, -0.05, 0.15)), 0.1, 'steel')
+    arm = b.finish('siege_arm', col, [])
+
+    rig, (body, skirt) = sb.build_base()                     # the crewman, pushing at the handles
+    rig.location = (0, 1.82, 0)
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    sb.rotate(rig, 'spine', X, 14); sb.rotate(rig, 'chest', X, 12)                # leaning into it
+    aim(rig, 'thigh.L', (0.04, -0.3, -0.95)); aim(rig, 'shin.L', (0.0, 0.08, -1))
+    aim(rig, 'thigh.R', (-0.04, 0.42, -0.9)); aim(rig, 'shin.R', (0.0, 0.62, -0.78)); aim(rig, 'foot.R', (0, -0.6, -0.8))
+    for s, k in (('L', 1), ('R', -1)):
+        handle = Vector((0.3 * k, 1.2, 0.8))
+        sh = rig.matrix_world @ rig.pose.bones['upper_arm.' + s].head
+        aim(rig, 'upper_arm.' + s, (handle - sh) + Vector((0, 0, -0.08)))
+        el = rig.matrix_world @ rig.pose.bones['forearm.' + s].head
+        aim(rig, 'forearm.' + s, handle - el)
+        aim(rig, 'hand.' + s, handle - el)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    pieces = [(frame, 0, lambda co: flag_wave.get(tuple(round(c, 4) for c in co), 0.0)), (arm, 4),
+              (body, 'walker'), (skirt, 0)]
+    unit = bake('siege', col, pieces)
+    for ob, *_ in pieces:
+        ob.hide_set(True); ob.hide_render = True
+    rig.hide_set(True)
+    return unit
+
+
+UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav, 'siege': build_siege}
 
 if __name__ == '__main__':
     for key in [a for a in sys.argv[1:] if a in UNITS] or list(UNITS):

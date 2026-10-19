@@ -6,14 +6,15 @@ import { smooth } from '../core/util.js';
    Close-up unit models
    Made in Blender (tools/blender/units.py) and drawn instead of the light procedural soldiers when the camera is
    close (crowds.js). A file holds one mesh in Blender metres, feet at 0, facing forward (+z here), one plain colour
-   per material; the material `tint` takes the power's colour, `_part` marks the legs (1, 2) and the weapon arm (3),
-   `_wave` the cloth. A missing or broken file only means that unit keeps its light model up close.
+   per material; the material `tint` takes the power's colour, `_part` marks the legs (1, 2), the weapon arm (3) and
+   a siege engine's throwing arm (4), `_wave` the cloth. A missing or broken file only means that unit keeps its light model up close.
    ========================================================= */
 export const MODEL_SCALE = 0.2;                // Blender metres to game units
 export const MODEL_URLS = {
   spear: new URL('../assets/units/spear.glb', import.meta.url).href,
   arch: new URL('../assets/units/arch.glb', import.meta.url).href,
   cav: new URL('../assets/units/cav.glb', import.meta.url).href,
+  siege: new URL('../assets/units/siege.glb', import.meta.url).href,
 };
 export const MODELS = {};                      // unit type -> geometry for the crowd material, once loaded
 
