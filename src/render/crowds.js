@@ -130,9 +130,9 @@ export function buildCrowdGeos() {
   G.arch = mergeX([
     ...legs(0.1, 0.024), torso(0.165), head(0.27),
     { geo: new THREE.SphereGeometry(0.052, 8, 5, 0, TAU, 0, Math.PI * 0.6), color: W, tint: 1, pos: [0, 0.278, -0.004] },
-    { geo: new THREE.TorusGeometry(0.13, 0.007, 4, 12, 2.3), color: '#5a3a22', rot: [0, Math.PI / 2, -1.15], pos: [-0.06, 0.2, 0.07], part: 3 },
-    { geo: cyl(0.022, 0.022, 0.15, 6), color: LEATHER, pos: [0.03, 0.21, -0.06], rot: [0.35, 0, 0.2] },
-    { geo: cyl(0.003, 0.003, 0.05, 3), color: '#e8e0d0', pos: [0.04, 0.3, -0.09], rot: [0.35, 0, 0.2] },
+    { geo: new THREE.TorusGeometry(0.13, 0.007, 4, 12, 2.3), color: '#5a3a22', rot: [0, -Math.PI / 2, 1.15], pos: [0.06, 0.2, 0.07], part: 3 },   // bow in the left hand, as up close
+    { geo: cyl(0.022, 0.022, 0.15, 6), color: LEATHER, pos: [-0.03, 0.21, -0.06], rot: [0.35, 0, -0.2] },
+    { geo: cyl(0.003, 0.003, 0.05, 3), color: '#e8e0d0', pos: [-0.04, 0.3, -0.09], rot: [0.35, 0, -0.2] },
   ]);
   // cavalry: horse + rider with lance and small shield
   G.cav = mergeX([
