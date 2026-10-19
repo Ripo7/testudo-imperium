@@ -109,8 +109,8 @@ export function buildCrowdGeos() {
   G.leg = mergeX([...legBase,
     scutum([0, 0.17, -0.07]), { geo: sph(0.018, 6, 4), color: GOLD, pos: [0, 0.17, 0.085] },
     { geo: box(0.11, 0.008, 0.006), color: GOLD, pos: [0, 0.245, 0.077] }, { geo: box(0.11, 0.008, 0.006), color: GOLD, pos: [0, 0.095, 0.077] },
-    { geo: cyl(0.006, 0.006, 0.46, 4), color: WOOD, pos: [0.075, 0.26, 0.02], part: 3 },
-    { geo: cone(0.011, 0.07, 4), color: STEEL, pos: [0.075, 0.52, 0.02], part: 3 },
+    { geo: cyl(0.006, 0.006, 0.46, 4), color: WOOD, pos: [-0.075, 0.26, 0.02], part: 3 },          // pilum in the right hand, as up close
+    { geo: cone(0.011, 0.07, 4), color: STEEL, pos: [-0.075, 0.52, 0.02], part: 3 },
   ]);
   // testudo: shield held overhead, roofing the formation
   G.legT = mergeX([...legBase,

@@ -10,7 +10,7 @@ from math import cos, sin, radians, degrees
 
 COLOURS = {'skin': '#e9c9a6', 'tint': '#ffffff', 'leather': '#6b4f37', 'dark': '#3d3128', 'hair': '#4a3526',
            'steel': '#9aa2ab', 'bronze': '#c8a560', 'wood': '#7a5434', 'bow': '#5a3a22', 'linen': '#e8e0d0',
-           'horse': '#7a5537', 'horse_dark': '#4f3624', 'rope': '#c9b48a'}
+           'horse': '#7a5537', 'horse_dark': '#4f3624', 'rope': '#c9b48a', 'iron': '#6c727a'}
 
 
 def srgb_to_lin(c):
@@ -127,8 +127,10 @@ BONES = [  # name, head, tail, parent, connected
 GROUPS = ['hips', 'spine', 'chest', 'neck', 'head'] + [n + s for n in ('upper_arm', 'forearm', 'hand', 'thigh', 'shin', 'foot') for s in ('.L', '.R')]
 
 
-def build_body(col):
-    b = Builder(['skin', 'tint', 'leather', 'dark', 'hair'])
+def build_body(col, armour=False):
+    """armour: a segmented iron cuirass over the chest and shoulders (legionaries), two more rings for its bands."""
+    b = Builder(['skin', 'tint', 'leather', 'dark', 'hair'] + (['steel', 'iron'] if armour else []))
+    plate = 'steel' if armour else 'tint'
     # torso: half rings front centre (y<0) -> front-side -> side -> back-side -> back centre, x >= 0
     P = b.half_ring(0.62, [(0, -0.135), (0.15, -0.115), (0.20, 0.0), (0.15, 0.115), (0, 0.14)], hips=1)
     W = b.half_ring(0.78, [(0, -0.132), (0.133, -0.108), (0.172, 0.0), (0.133, 0.103), (0, 0.124)], hips=0.5, spine=0.5)
@@ -140,10 +142,18 @@ def build_body(col):
     b.weigh(C[1:4] + S[1:4], upper_arm_L=0.3)                # the shoulder follows the arm a little
     b.bridge(P, W, 'tint', closed=False)
     b.bridge(W, W2, 'leather', closed=False)                  # belt
-    b.bridge(W2, C, 'tint', closed=False)
-    b.face((C[0], C[1], S[1], S[0]), 'tint')                 # chest; the side is the arm's
-    b.face((C[3], C[4], S[4], S[3]), 'tint')                 # back
-    b.bridge(S, N0, 'tint', closed=False)                     # top of the shoulders, up to the neckline
+    if armour:                                                # the cuirass's bands, steel and darker iron
+        mid = lambda k, f: [(W2[i].co.x + (C[i].co.x - W2[i].co.x) * f, W2[i].co.y + (C[i].co.y - W2[i].co.y) * f) for i in range(5)]
+        A1 = b.half_ring(0.888, mid(0, 0.36), spine=1)
+        A2 = b.half_ring(0.93, mid(0, 0.68), spine=0.7, chest=0.3)
+        b.bridge(W2, A1, 'steel', closed=False)
+        b.bridge(A1, A2, 'iron', closed=False)
+        b.bridge(A2, C, 'steel', closed=False)
+    else:
+        b.bridge(W2, C, 'tint', closed=False)
+    b.face((C[0], C[1], S[1], S[0]), plate)                  # chest; the side is the arm's
+    b.face((C[3], C[4], S[4], S[3]), plate)                  # back
+    b.bridge(S, N0, plate, closed=False)                      # top of the shoulders, up to the neckline
 
     # head: neck, jaw, nose and mouth, eyes, brow, crown
     N1 = b.half_ring(1.235, [(0, -0.072), (0.055, -0.055), (0.077, 0.0), (0.055, 0.058), (0, 0.078)], neck=0.5, head=0.5)
@@ -183,7 +193,7 @@ def build_body(col):
     Wr, u = arm_ring(WRIST, ARM2, u, 0.04, 0.045, forearm_L=0.5, hand_L=0.5)
     Pm, u = arm_ring(WRIST + 0.045 * ARM2, ARM2, u, 0.04, 0.06, hand_L=1)                        # palm, facing the thigh
     Hd, u = arm_ring(HAND_END, ARM2, u, 0.036, 0.05, hand_L=1)                                    # finger ends
-    b.bridge(hole, D, 'tint')
+    b.bridge(hole, D, plate)                                  # shoulder (a plate on the cuirass)
     b.bridge(D, Sl, 'tint')
     b.bridge(Sl, El, 'skin')
     b.bridge(El, Wr, 'skin')
@@ -259,10 +269,10 @@ def build_rig(col):
     return rig
 
 
-def build_base():
+def build_base(armour=False):
     col = collection('Soldier')
     rig = build_rig(col)
-    pieces = [build_body(col), build_skirt(col)]
+    pieces = [build_body(col, armour), build_skirt(col)]
     for ob in pieces:
         ob.parent = rig
         m = ob.modifiers.new('Mirror', 'MIRROR')
