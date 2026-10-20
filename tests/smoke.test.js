@@ -51,6 +51,23 @@ export default async function smoke() {
         return { tris: Object.entries(T.MODELS).map(([k, g]) => `${k} ${g.index.count / 3}`).join(', '), close, high };
       });
       check(lod && lod.close.near > 0 && lod.high.near === 0 && lod.high.far >= lod.close.near, `[${label}] close-up models loaded (${lod && lod.tris} triangles); spearmen near the camera use theirs (${lod && lod.close.near}) and the light ones from high up`);
+      // cities: the full version up close and the light one from afar; the improvements built during the war stand
+      const city = await page.evaluate(() => {
+        const T = window.__T, cam = { ...T.CAM };
+        const c = T.MAP.cities.find((k) => k.major && k.imps.length) || T.MAP.cities.find((k) => k.major), w = T.cellToWorld(c.x, c.y);
+        const look = (d) => { T.CAM.x = T.CAM.tx = w.x; T.CAM.z = T.CAM.tz = w.z; T.CAM.d = T.CAM.td = d; T.applyCamera(); for (let k = 0; k < 40; k++) T.updateCityDetail(); return c.mesh.base.geometry === c.mesh.lod.near; };
+        const near = look(8), far = !look(120);
+        Object.assign(T.CAM, cam); T.applyCamera();
+        const withImps = T.MAP.cities.filter((k) => k.imps.length);
+        const raised = withImps.filter((k) => {
+          const kinds = new Set(T.planCity(T.citySpec(k)).items.map((it) => it.kind));
+          return k.imps.every((id) => T.LANDMARKS[id].some((x) => kinds.has(x)) || (id === 'temple' && kinds.has('forum')));
+        }).length;
+        return { near, far, raised, built: withImps.length, current: T.MAP.cities.every((k) => k.mesh.look === T.cityLook(k)), cultures: [...new Set(T.MAP.cities.map((k) => T.cultureOf(k)))].length,
+          models: Object.keys(T.LANDMARK_URLS).filter((k) => T.MODEL_GEOS[k]).length, of: Object.keys(T.LANDMARK_URLS).length };
+      });
+      check(city.near && city.far && city.current && city.raised >= city.built * 0.9 && city.cultures === 4, `[${label}] cities in four styles, the full version up close and the light one from afar; ${city.raised} of ${city.built} cities show the improvements they built`);
+      check(city.models === city.of, `[${label}] the Blender landmarks loaded (${city.models} of ${city.of})`);
       const view = await page.evaluate(() => {
         const vis = (id) => { const el = document.getElementById(id); return !!el && el.offsetParent !== null && getComputedStyle(el).display !== 'none'; };
         document.getElementById('btnView').click();
@@ -70,5 +87,14 @@ export default async function smoke() {
       check(!errors.length, `[${label}] no script errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);
       await ctx.close();
     }
+    // the city lab page builds every culture at every size
+    const ctx = await browser.newContext({ viewport: { width: 1000, height: 640 }, deviceScaleFactor: 1 }), page = await ctx.newPage(), errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    await page.goto(site.url + 'citylab.html', { timeout: 120000 });
+    await page.waitForFunction(() => !!window.__LAB, null, { timeout: 120000 });
+    const lab = await page.evaluate(() => ({ cities: window.__LAB.scene.children.find((o) => o.isGroup).children.length, stats: document.getElementById('stats').textContent }));
+    check(lab.cities >= 16 && /\d+k triangles/.test(lab.stats) && !errors.length, `the city lab shows ${lab.cities} meshes (${lab.stats.trim()})${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
   } finally { await browser.close(); site.close(); }
 }

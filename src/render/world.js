@@ -73,6 +73,7 @@ export function clearWorld() {
   while (worldGroup.children.length) {
     const o = worldGroup.children.pop();
     o.traverse && o.traverse((m) => { if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose(); });
+    if (o.userData.dispose) o.userData.dispose();      // geometries kept aside (a city's other level of detail)
   }
   riverMeshes = [];
 }

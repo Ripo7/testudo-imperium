@@ -2,11 +2,14 @@ import { THREE } from '../three.js';
 import { MAP } from '../game/state.js';
 import { clamp, lerp, smooth, TAU } from '../core/util.js';
 import { BIOME, rng32 } from '../map/generate.js';
-import { box, cone, cyl, MAT, merge, sph } from './renderer.js';
+import { box, camera, cone, cyl, MAT, merge, sph } from './renderer.js';
 import { cellToWorld, FLAG_MAT, worldGroup } from './world.js';
 import { CAM } from './camera.js';
 import { DETAIL_TEX, FH, FW, heightAt, RS } from './terrain.js';
 import { clearFloraAround, FLORA_U } from './vegetation.js';
+import { riverLines } from './water.js';
+import { cityParts, CULTURE_OF_POWER, planCity, wallParts } from './citygen.js';
+import { startingCapitals } from '../game/campaign.js';
 
 /* =========================================================
    Cities, walls, forts, roads, bridges, farmland, ports.
@@ -36,8 +39,6 @@ export const shadeUp = (g, y0, y1, lo, hi) => {
   for (let i = 0; i < p.count; i++) { const f = lerp(lo, hi, smooth(y0, y1, p.getY(i))); c.setXYZ(i, c.getX(i) * f, c.getY(i) * f, c.getZ(i) * f); }
   return g;
 };
-export const ROOF_COLS = ['#c2603b', '#b5532f', '#cf7046', '#ad4c2e', '#c86a3e'];
-export const WALL_COLS = ['#f1e7d2', '#e9d8b4', '#e6cfa2', '#f3ecdf', '#dcc296'];
 export const cityR = (c) => (c.major ? 1.6 : 0.95);
 
 /* ---------- occupancy mask (roads, fields, ports): keeps trees off them ---------- */
@@ -231,125 +232,79 @@ export function buildFields() {
   worldGroup.add(fieldsMesh);
 }
 
-/* ---------- city buildings ---------- */
-export function houseParts(parts, x, z, rot, w, l, h, rnd, roofCol, wallCol) {
-  parts.push({ geo: box(w, h, l), color: wallCol, pos: [x, h / 2, z], rot: [0, rot, 0] });
-  const rh = 0.07 + Math.min(w, l) * 0.35;
-  if (rnd() < 0.55) parts.push({ geo: HIP_ROOF, color: roofCol, pos: [x, h + rh / 2, z], rot: [0, rot, 0], scale: [w * 1.12, rh, l * 1.12] });
-  else parts.push({ geo: GABLE, color: roofCol, pos: [x, h + rh / 2, z], rot: [0, rot + (w > l ? PI2 : 0), 0], scale: [(w > l ? l : w) * 1.14, rh, (w > l ? w : l) * 1.06] });
+/* ---------- the city itself: streets, houses and landmarks (render/citygen.js) ---------- */
+// each region builds in the style of the power that starts nearest to it; the style stays when the city changes hands
+export let cultureCache = null;
+export function cultureOf(c) {
+  if (!cultureCache || cultureCache.map !== MAP) {
+    const caps = startingCapitals(MAP.seed).map((p) => MAP.cities[p.major]);
+    cultureCache = { map: MAP, list: MAP.cities.map((d) => {
+      let best = 0, bd = Infinity;
+      caps.forEach((k, f) => { const dd = Math.hypot(k.x - d.x, k.y - d.y); if (dd < bd) { bd = dd; best = f; } });
+      return CULTURE_OF_POWER[best];
+    }) };
+  }
+  return cultureCache.list[c.id];
 }
-export function templeParts(parts, x, z, rot, s, big) {
-  const P = (u, v) => [x + Math.cos(-rot) * u - Math.sin(-rot) * v, z + Math.sin(-rot) * u + Math.cos(-rot) * v];
-  const W0 = 0.34 * s, L0 = 0.5 * s, ph = 0.07 * s, ch = 0.2 * s;
-  parts.push({ geo: box(W0 + 0.06 * s, ph, L0 + 0.08 * s), color: '#e9e2d2', pos: [x, ph / 2, z], rot: [0, rot, 0] });
-  parts.push({ geo: box(W0 * 0.7, ph * 0.6, 0.12 * s), color: '#ddd5c4', pos: [...(() => { const [a, b] = P(0, L0 / 2 + 0.08 * s); return [a, ph * 0.3, b]; })()], rot: [0, rot, 0] });
-  parts.push({ geo: box(W0 * 0.62, ch, L0 * 0.62), color: '#efe8da', pos: [x, ph + ch / 2, z], rot: [0, rot, 0] });
-  const nc = big ? 6 : 4, nl = big ? 7 : 5;
-  for (let i = 0; i < nc; i++) for (let j = 0; j < nl; j++) {
-    if (i > 0 && i < nc - 1 && j > 0 && j < nl - 1) continue;
-    const [a, b] = P(-W0 / 2 + (i / (nc - 1)) * W0, -L0 / 2 + (j / (nl - 1)) * L0);
-    parts.push({ geo: cyl(0.016 * s, 0.019 * s, ch, 6), color: '#f6f2ea', pos: [a, ph + ch / 2, b] });
+// the direction of the nearest open sea from a port
+export function portAngle(c) {
+  let best = null, bd = 1e9;
+  for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+    const x = c.x + dx, y = c.y + dy;
+    if (x < 0 || y < 0 || x >= MAP.W || y >= MAP.H || !MAP.ocean[y * MAP.W + x]) continue;
+    const d = Math.hypot(dx, dy); if (d < bd) { bd = d; best = Math.atan2(dy, dx); }
   }
-  parts.push({ geo: box(W0 + 0.05 * s, 0.04 * s, L0 + 0.05 * s), color: '#efe9de', pos: [x, ph + ch + 0.02 * s, z], rot: [0, rot, 0] });
-  parts.push({ geo: GABLE, color: '#c86a3e', pos: [x, ph + ch + 0.04 * s + 0.06 * s, z], rot: [0, rot, 0], scale: [W0 + 0.08 * s, 0.12 * s, L0 + 0.08 * s] });
+  return best;
 }
-export function cityStaticGeo(c) {
-  const rnd = rng32(MAP.seed * 31 + c.id * 17);
-  const th = c.theta, R = cityR(c);
-  const parts = [];
-  const rotL = -th;
-  const L = (u, v) => [u * Math.cos(th) - v * Math.sin(th), u * Math.sin(th) + v * Math.cos(th)];
-  const roof = () => ROOF_COLS[(rnd() * ROOF_COLS.length) | 0], wall = () => WALL_COLS[(rnd() * WALL_COLS.length) | 0];
-  // packed-earth ground disc so streets read between houses
-  if (c.major) {
-    // forum with colonnades, temple, basilica
-    parts.push({ geo: box(0.8, 0.03, 0.62), color: '#e2d9c6', pos: [0, 0.02, 0], rot: [0, rotL, 0] });
-    for (const sv of [-1, 1]) {
-      for (let k = 0; k < 7; k++) { const [a, b] = L(-0.33 + k * 0.11, sv * 0.27); parts.push({ geo: cyl(0.014, 0.016, 0.13, 6), color: '#f5f1e8', pos: [a, 0.1, b] }); }
-      const [a, b] = L(0, sv * 0.3);
-      parts.push({ geo: box(0.78, 0.035, 0.1), color: '#c86a3e', pos: [a, 0.18, b], rot: [0, rotL, 0] });
-    }
-    { const [a, b] = L(0, 0); parts.push({ geo: cyl(0.025, 0.035, 0.22, 8), color: '#f3eee3', pos: [a, 0.13, b] }); parts.push({ geo: sph(0.035, 6, 4), color: '#c9a64a', pos: [a, 0.27, b] }); }
-    { const [a, b] = L(-0.7, 0); templeParts(parts, a, b, rotL + PI2, 1.15, true); }
-    { const [a, b] = L(0.62, 0); parts.push({ geo: box(0.2, 0.16, 0.56), color: '#efe6d3', pos: [a, 0.08, b], rot: [0, rotL, 0] }); parts.push({ geo: GABLE, color: '#c2603b', pos: [a, 0.2, b], rot: [0, rotL, 0], scale: [0.24, 0.08, 0.6] }); }
-    if (c.capital) {
-      // amphitheatre
-      const [a, b] = L(0.12, 0.98);
-      const ring = (r, h, colr, y0, open) => ({ geo: cyl(r, r, h, 22, open), color: colr, pos: [a, y0 + h / 2, b], rot: [0, rotL, 0], scale: [1.25, 1, 0.95] });
-      parts.push(ring(0.36, 0.2, '#e6dac2', 0, true));
-      parts.push(ring(0.365, 0.04, '#c8b998', 0.08, true));
-      parts.push(ring(0.37, 0.04, '#c8b998', 0.15, true));
-      parts.push(ring(0.24, 0.12, '#d9cbb0', 0, true));
-      parts.push(ring(0.24, 0.015, '#d8bf86', 0.0, false));
-    }
-  } else {
-    // a small shrine or a villa near the centre
-    const [a, b] = L(0.05, -0.08);
-    if (rnd() < 0.5) templeParts(parts, a, b, rotL + (rnd() < 0.5 ? 0 : PI2), 0.7, false);
-    else { houseParts(parts, a, b, rotL, 0.32, 0.28, 0.16, rnd, roof(), '#f1e7d2'); }
+// the stretches of river through the city, in its own coordinates (the houses keep off them, the streets bridge them)
+export function cityWater(c) {
+  const R = cityR(c) + 0.6, out = [];
+  for (const line of riverLines()) for (let k = 0; k + 1 < line.length; k++) {
+    const p = line[k], q = line[k + 1];
+    if (Math.hypot(p[0] - c.x, p[1] - c.y) > R && Math.hypot(q[0] - c.x, q[1] - c.y) > R) continue;
+    out.push({ a: [p[0] - c.x, p[1] - c.y], b: [q[0] - c.x, q[1] - c.y], w: (p[2] + q[2]) / 2 });
   }
-  // houses on a Roman grid (major) or loosely clustered (towns)
-  const reserved = (u, v) => (c.major && ((Math.abs(u) < 0.95 && Math.abs(v) < 0.42) || (c.capital && Math.hypot((u - 0.12) / 1.25, (v - 0.98) / 0.95) < 0.5))) || (!c.major && Math.hypot(u - 0.05, v + 0.08) < 0.3);
-  if (c.major) {
-    const S = 0.3;
-    for (let iv = -6; iv <= 6; iv++) for (let iu = -6; iu <= 6; iu++) {
-      const u = iu * S + (rnd() - 0.5) * 0.03, v = iv * S + (rnd() - 0.5) * 0.03;
-      if (Math.hypot(u, v) > R - 0.2 || reserved(u, v)) continue;
-      const [a, b] = L(u, v);
-      if (rnd() < 0.1) { parts.push({ geo: cone(0.05, 0.26, 6), color: '#2f5a2c', pos: [a, 0.13, b] }); continue; }
-      if (rnd() < 0.06) continue;
-      const w = 0.17 + rnd() * 0.08, l = 0.16 + rnd() * 0.08, h = rnd() < 0.18 ? 0.2 + rnd() * 0.08 : 0.1 + rnd() * 0.07;
-      houseParts(parts, a, b, rotL + (rnd() < 0.5 ? 0 : PI2), w, l, h, rnd, roof(), wall());
-    }
-  } else {
-    const placed = [];
-    for (let tries = 0; tries < 60 && placed.length < 9; tries++) {
-      const ang = rnd() * TAU, d = 0.25 + Math.sqrt(rnd()) * (R - 0.4);
-      const u = Math.cos(ang) * d, v = Math.sin(ang) * d;
-      if (reserved(u, v) || placed.some(([pu, pv]) => Math.hypot(pu - u, pv - v) < 0.24)) continue;
-      placed.push([u, v]);
-      const [a, b] = L(u, v);
-      houseParts(parts, a, b, rotL + (rnd() - 0.5) * 0.5, 0.16 + rnd() * 0.08, 0.15 + rnd() * 0.08, 0.09 + rnd() * 0.06, rnd, roof(), wall());
-    }
-    for (let k = 0; k < 2; k++) { const a = rnd() * TAU, d = R - 0.25; parts.push({ geo: cone(0.07, 0.12, 7), color: '#d9b452', pos: [Math.cos(a) * d, 0.06, Math.sin(a) * d] }); }
-    parts.push({ geo: cyl(0.04, 0.04, 0.05, 8), color: '#b9ad94', pos: [L(-0.25, 0.2)[0], 0.025, L(-0.25, 0.2)[1]] });
-  }
+  return out;
+}
+export function citySpec(c) {
+  return { seed: MAP.seed * 31 + c.id * 17, R: cityR(c), gates: c.gates, major: !!c.major, capital: !!c.capital, port: !!c.port,
+    portAng: c.port ? portAngle(c) : null, culture: cultureOf(c), imps: c.imps || [], water: cityWater(c) };
+}
+// what the city's buildings depend on: they are rebuilt when it changes
+export const cityLook = (c) => `${(c.imps || []).join(',')}|${c.capital ? 1 : 0}`;
+// the city's streets, buildings, banner pole and harbour; far: the light version for distant views
+export function cityStaticGeo(c, far = false) {
+  const spec = citySpec(c), plan = planCity(spec);
+  const parts = cityParts(plan, far);
   // banner pole
-  const [px, pz] = c.major ? L(-0.7, 0.0) : L(0.05, -0.08);
-  c.flagAt = [px, (c.major ? 0.5 : 0.32), pz];
+  const [px, py, pz] = plan.flagAt;
+  c.flagAt = [px, py, pz];
   parts.push({ geo: cyl(0.012, 0.016, c.flagAt[1] + 0.32, 5), color: '#5b4330', pos: [px, (c.flagAt[1] + 0.32) / 2, pz] });
+  const R = cityR(c);
   // harbour
   c.dock = null;
-  if (c.port) {
-    let best = null, bd = 1e9;
-    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
-      const x = c.x + dx, y = c.y + dy;
-      if (x < 0 || y < 0 || x >= MAP.W || y >= MAP.H || !MAP.ocean[y * MAP.W + x]) continue;
-      const d = Math.hypot(dx, dy); if (d < bd) { bd = d; best = Math.atan2(dy, dx); }
-    }
-    if (best !== null) {
-      const ang = best, ca = Math.cos(ang), sa = Math.sin(ang);
-      // walk out until the water is deep enough
-      let r1 = R;
-      while (r1 < R + 3 && heightAt(c.x + ca * r1, c.y + sa * r1) > -0.12) r1 += 0.1;
-      const h0 = Math.max(0.15, heightAt(c.x, c.y));
-      const deckY = 0.09 - h0, r0 = R - 0.1, len = r1 - r0 + 0.25;
-      if (len > 0.3 && len < 3.5) {
-        const mid = (r0 + r0 + len) / 2;
-        parts.push({ geo: box(len, 0.035, 0.16), color: '#8a6a45', pos: [ca * mid, deckY, sa * mid], rot: [0, -ang, 0] });
-        for (let k = 0; k <= Math.floor(len / 0.3); k++) for (const sv of [-1, 1]) {
-          const r = r0 + k * 0.3, ox = -sa * sv * 0.07, oz = ca * sv * 0.07;
-          parts.push({ geo: cyl(0.015, 0.015, 0.4, 5), color: '#5e4430', pos: [ca * r + ox, deckY - 0.18, sa * r + oz] });
-        }
-        // a moored ship alongside the pier end
-        const sr = r0 + len - 0.1, side = 0.26;
-        const sx = ca * sr - sa * side, sz = sa * sr + ca * side;
-        parts.push({ geo: sph(0.5, 10, 6), color: '#7a5232', pos: [sx, 0.0 - h0, sz], rot: [0, -ang, 0], scale: [0.5, 0.16, 0.15] });
-        parts.push({ geo: box(0.36, 0.02, 0.1), color: '#9a7a52', pos: [sx, 0.06 - h0, sz], rot: [0, -ang, 0] });
-        parts.push({ geo: cyl(0.01, 0.012, 0.42, 5), color: '#4a3424', pos: [sx, 0.27 - h0, sz] });
-        c.dock = { x: sx, y: 0.3 - h0, z: sz, ang };
-        markMask(c.x + ca * (r0 + len / 2), c.y + sa * (r0 + len / 2), 0.3);
+  if (c.port && spec.portAng !== null) {
+    const ang = spec.portAng, ca = Math.cos(ang), sa = Math.sin(ang);
+    // walk out until the water is deep enough
+    let r1 = R;
+    while (r1 < R + 3 && heightAt(c.x + ca * r1, c.y + sa * r1) > -0.12) r1 += 0.1;
+    const h0 = Math.max(0.15, heightAt(c.x, c.y));
+    const deckY = 0.09 - h0, r0 = R - 0.1, len = r1 - r0 + 0.25;
+    if (len > 0.3 && len < 3.5) {
+      const mid = (r0 + r0 + len) / 2;
+      parts.push({ geo: box(len, 0.035, 0.16), color: '#8a6a45', pos: [ca * mid, deckY, sa * mid], rot: [0, -ang, 0] });
+      for (let k = 0; k <= Math.floor(len / 0.3); k++) for (const sv of [-1, 1]) {
+        const r = r0 + k * 0.3, ox = -sa * sv * 0.07, oz = ca * sv * 0.07;
+        parts.push({ geo: cyl(0.015, 0.015, 0.4, 5), color: '#5e4430', pos: [ca * r + ox, deckY - 0.18, sa * r + oz] });
       }
+      // a moored ship alongside the pier end
+      const sr = r0 + len - 0.1, side = 0.26;
+      const sx = ca * sr - sa * side, sz = sa * sr + ca * side;
+      parts.push({ geo: sph(0.5, 10, 6), color: '#7a5232', pos: [sx, 0.0 - h0, sz], rot: [0, -ang, 0], scale: [0.5, 0.16, 0.15] });
+      parts.push({ geo: box(0.36, 0.02, 0.1), color: '#9a7a52', pos: [sx, 0.06 - h0, sz], rot: [0, -ang, 0] });
+      parts.push({ geo: cyl(0.01, 0.012, 0.42, 5), color: '#4a3424', pos: [sx, 0.27 - h0, sz] });
+      c.dock = { x: sx, y: 0.3 - h0, z: sz, ang };
+      markMask(c.x + ca * (r0 + len / 2), c.y + sa * (r0 + len / 2), 0.3);
     }
   }
   const g = shadeUp(merge(parts), 0, 0.35, 0.74, 1.06);
@@ -358,56 +313,9 @@ export function cityStaticGeo(c) {
 
 /* ---------- walls by level (gates face the roads) ---------- */
 export function wallGeoFor(c, level) {
-  const R = cityR(c), parts = [];
-  if (level <= 0) {
-    if (c.major) parts.push({ geo: cyl(R + 0.05, R + 0.05, 0.035, 36, true), color: '#7b6a4c', pos: [0, 0.02, 0] });
-    if (!parts.length) return new THREE.BufferGeometry();
-    return merge(parts);
-  }
-  const h = [0, 0.2, 0.3, 0.42][level], t = 0.06 + level * 0.012;
-  const N = c.major ? 40 : 24;
-  const gap = 0.17 / R;
-  const inGate = (a) => c.gates.some((g) => Math.abs(Math.atan2(Math.sin(a - g), Math.cos(a - g))) < gap);
-  const stone = level >= 3 ? '#d6cbb2' : '#e0d5bc', stone2 = '#c9bc9f';
-  const segL = 2 * R * Math.sin(Math.PI / N) + 0.012;
-  for (let k = 0; k < N; k++) {
-    const a = (k + 0.5) / N * TAU;
-    if (inGate(a)) continue;
-    const x = Math.cos(a) * R, z = Math.sin(a) * R, ry = -(a + PI2);
-    parts.push({ geo: box(segL, h, t), color: stone, pos: [x, h / 2, z], rot: [0, ry, 0] });
-    parts.push({ geo: box(segL + 0.004, 0.022, t + 0.02), color: stone2, pos: [x, h - 0.011, z], rot: [0, ry, 0] });
-    // merlons
-    for (const o of [-0.25, 0.25]) {
-      const ox = -Math.sin(a) * o * segL, oz = Math.cos(a) * o * segL;
-      parts.push({ geo: box(segL * 0.32, 0.045, t * 0.7), color: stone, pos: [x + ox + Math.cos(a) * t * 0.2, h + 0.022, z + oz + Math.sin(a) * t * 0.2], rot: [0, ry, 0] });
-    }
-  }
-  // towers
-  const nT = level === 1 ? (c.major ? 4 : 0) : level === 2 ? (c.major ? 8 : 4) : (c.major ? 10 : 6);
-  const tr = level === 3 ? 0.13 : 0.1;
-  const towerAngles = [];
-  for (let k = 0; k < nT; k++) {
-    let a = (k + 0.5) / nT * TAU + (c.gates[0] || 0);
-    if (inGate(a)) a += gap * 2.2;
-    towerAngles.push(a);
-    const x = Math.cos(a) * R, z = Math.sin(a) * R, th = h + 0.14;
-    parts.push({ geo: cyl(tr, tr * 1.12, th, 10), color: stone, pos: [x, th / 2, z] });
-    if (level === 3) {
-      for (let m = 0; m < 6; m++) { const b = m / 6 * TAU; parts.push({ geo: box(0.05, 0.05, 0.04), color: stone, pos: [x + Math.cos(b) * tr * 0.9, th + 0.025, z + Math.sin(b) * tr * 0.9], rot: [0, -b, 0] }); }
-    } else parts.push({ geo: cone(tr * 1.35, 0.15, 10), color: '#b5532f', pos: [x, th + 0.075, z] });
-    if (level >= 2 && k % 2 === 0) parts.push({ geo: cyl(0.006, 0.006, 0.14, 4), color: '#5b4330', pos: [x, th + (level === 3 ? 0.05 : 0.15) + 0.07, z] });
-  }
-  // gatehouses
-  for (const g of c.gates) {
-    for (const sgn of [-1, 1]) {
-      const a = g + sgn * gap * 1.05, x = Math.cos(a) * R, z = Math.sin(a) * R, th = h + 0.17;
-      parts.push({ geo: box(0.15, th, 0.15), color: stone, pos: [x, th / 2, z], rot: [0, -a, 0] });
-      parts.push({ geo: HIP_ROOF, color: '#b5532f', pos: [x, th + 0.06, z], rot: [0, -a, 0], scale: [0.2, 0.12, 0.2] });
-    }
-    const x = Math.cos(g) * R, z = Math.sin(g) * R;
-    parts.push({ geo: box(gap * 2.1 * R, 0.07, t + 0.03), color: stone2, pos: [x, h * 0.9 + 0.04, z], rot: [0, -(g + PI2), 0] });
-  }
-  c.towerTops = towerAngles.map((a) => [Math.cos(a) * R, h + 0.14 + (level === 3 ? 0.05 : 0.15), Math.sin(a) * R]);
+  const { parts, towerTops } = wallParts(citySpec(c), level);
+  c.towerTops = towerTops;
+  if (!parts.length) return new THREE.BufferGeometry();
   return shadeUp(merge(parts), 0, 0.3, 0.8, 1.05);
 }
 
@@ -473,7 +381,9 @@ export function buildCityMesh(c) {
   if (c.theta === undefined) c.theta = rng32(MAP.seed * 13 + c.id)() * Math.PI;
   const g = new THREE.Group();
   cellToWorld(c.x, c.y, g.position);
-  const base = new THREE.Mesh(cityStaticGeo(c), MAT.vc);
+  const lod = { far: cityStaticGeo(c, true), near: null, isNear: false };
+  g.userData.dispose = () => { lod.far.dispose(); if (lod.near) lod.near.dispose(); };
+  const base = new THREE.Mesh(lod.far, MAT.vc);
   base.castShadow = true; base.receiveShadow = true;
   const walls = new THREE.Mesh(wallGeoFor(c, c.walls || 0), MAT.vc);
   walls.castShadow = true; walls.receiveShadow = true;
@@ -481,16 +391,24 @@ export function buildCityMesh(c) {
   flags.castShadow = true;
   g.add(base, walls, flags);
   worldGroup.add(g);
-  c.mesh = { g, base, walls, flags, wallLevel: c.walls || 0 };
+  c.mesh = { g, base, walls, flags, lod, wallLevel: c.walls || 0, look: cityLook(c) };
   refreshCityMesh(c);
 }
 export function refreshCityMesh(c) {
   if (!c.mesh) return;
+  let flags = false;
+  if (c.mesh.look !== cityLook(c)) {                   // an improvement built or looted, a new capital
+    const lod = c.mesh.lod;
+    lod.far.dispose(); if (lod.near) lod.near.dispose();
+    lod.far = cityStaticGeo(c, true); lod.near = null; lod.isNear = false;  // the full version is rebuilt when the camera comes near
+    c.mesh.base.geometry = lod.far;
+    c.mesh.look = cityLook(c); flags = true;
+  }
   if (c.mesh.wallLevel !== c.walls) {
     c.mesh.walls.geometry.dispose(); c.mesh.walls.geometry = wallGeoFor(c, c.walls);
-    c.mesh.flags.geometry.dispose(); c.mesh.flags.geometry = cityFlagsGeo(c);
-    c.mesh.wallLevel = c.walls;
+    c.mesh.wallLevel = c.walls; flags = true;
   }
+  if (flags) { c.mesh.flags.geometry.dispose(); c.mesh.flags.geometry = cityFlagsGeo(c); }
   c.mesh.flags.material = c.owner >= 0 ? FLAG_MAT[c.owner] : FLAG_MAT[4];
 }
 
@@ -541,4 +459,32 @@ export function refreshFortMesh(f) {
   f.mesh.cloth.visible = f.built >= 1;
 }
 export function removeFortMesh(f) { if (f.mesh) { worldGroup.remove(f.mesh.g); f.mesh = null; } }
-export function updateCityDetail() { if (fieldsMesh) fieldsMesh.visible = CAM.d < 125; }
+// rebuild every city's buildings (the landmark models have arrived, say)
+export function rebuildCities() {
+  if (!MAP) return;
+  for (const c of MAP.cities) if (c.mesh) { c.mesh.look = null; refreshCityMesh(c); }
+}
+
+/* ---------- two levels of detail: the full city near the camera, the light one beyond ---------- */
+// a city switches to its full version within CITY_NEAR_IN of the camera and back beyond CITY_NEAR_OUT; the full
+// version is built the first time it is needed, a couple of cities per frame at most
+export const CITY_NEAR_IN = 22, CITY_NEAR_OUT = 25, CITY_BUILDS_PER_FRAME = 2;
+export function updateCityDetail() {
+  if (fieldsMesh) fieldsMesh.visible = CAM.d < 125;
+  if (!MAP) return;
+  const cp = camera.position;
+  let builds = 0;
+  for (const c of MAP.cities) {
+    const m = c.mesh;
+    if (!m) continue;
+    const p = m.g.position, d = Math.hypot(p.x - cp.x, p.y - cp.y, p.z - cp.z), lod = m.lod;
+    const want = lod.isNear ? d < CITY_NEAR_OUT : d < CITY_NEAR_IN;
+    if (want === lod.isNear) continue;
+    if (want && !lod.near) {
+      if (builds >= CITY_BUILDS_PER_FRAME) continue;
+      lod.near = cityStaticGeo(c, false); builds++;
+    }
+    lod.isNear = want;
+    m.base.geometry = want ? lod.near : lod.far;
+  }
+}

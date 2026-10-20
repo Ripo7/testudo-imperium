@@ -40,7 +40,7 @@ export function economy(dt) {
     if (c.loyal < 1) c.loyal = Math.min(1, c.loyal + dt * (temple ? BUILD.temple.loyalty : 1) / (ECON.loyalTime * (own ? 1 + ECON.overSlow * Math.max(0, own.share - fair) : 1)));
     if (own && c.impBuild) {
       const ib = c.impBuild; ib.t += dt / (IMPS[ib.id].time * buildTime(c.owner));
-      if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); HOOKS.impDone(c, ib.id); }
+      if (ib.t >= 1) { c.imps.push(ib.id); c.impBuild = null; bump(c.owner, 'works'); c.militiaMax = militiaMaxOf(c); HOOKS.impDone(c, ib.id); HOOKS.cityChanged(c); }
     }
     if (own && !(c.battle && !c.battle.done)) { const k = 0.8 * c.loyal * (temple ? 1 - (1 - own.stretch) * BUILD.temple.stretch : own.stretch) * (own.isPlayer ? 1 : diffOf().inc), y = cityYield(c, c.owner), l = landShare(c), pk = plunderer(c.prov, c.owner) ? ECON.plunder : 1; for (const r of RES) own.inc[r] += (y[r] + l[r] * pk) * k; if (pk < 1) bump(c.owner, 'plund', costSum(l) * (1 - pk) * k * dt); }
     // militia regen

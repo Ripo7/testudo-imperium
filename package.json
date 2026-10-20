@@ -16,6 +16,7 @@
     "audit": "node tools/audit.js",
     "params": "node tools/params.js",
     "lab": "node tools/lab.js",
+    "citylab": "vite --open /citylab.html",
     "tune": "node tools/tune.js",
     "lint": "eslint ."
   },
