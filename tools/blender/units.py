@@ -845,18 +845,23 @@ def build_char():
     return unit
 
 
-def flap(b, c, ry, rz, thick, mat, yaw=0.0, n=10):
-    """A flat oval plate in the YZ plane (an elephant's ear), turned by yaw degrees about Z; returns its edge vertices."""
+def flap(b, c, ry, rz, thick, mat, yaw=0.0, n=10, rim=None):
+    """A flat oval plate in the YZ plane (an elephant's ear), turned by yaw degrees about Z; rim: its edge's material.
+    Returns its edge vertices."""
     c = Vector(c)
     R = Matrix.Rotation(radians(yaw), 3, 'Z')
     def ring(x):
         return [b.v(c + R @ Vector((x, ry * cos(radians(360 * k / n)), rz * sin(radians(360 * k / n))))) for k in range(n)]
     inner, outer = ring(-thick / 2), ring(thick / 2)
-    b.bridge(inner, outer, mat)
+    b.bridge(inner, outer, rim or mat)
     for face_ring in (list(reversed(inner)), outer):
-        for k in (0, 3, 6):
-            b.face((face_ring[k], face_ring[k + 1], face_ring[k + 2], face_ring[k + 3]), mat)
-        b.face((face_ring[9], face_ring[0], face_ring[3], face_ring[6]), mat)
+        if n == 10:
+            for k in (0, 3, 6):
+                b.face((face_ring[k], face_ring[k + 1], face_ring[k + 2], face_ring[k + 3]), mat)
+            b.face((face_ring[9], face_ring[0], face_ring[3], face_ring[6]), mat)
+        else:                                                    # any even n: a ladder of quads across the plate
+            for i in range(n // 2 - 1):
+                b.face((face_ring[i], face_ring[i + 1], face_ring[n - 2 - i], face_ring[(n - 1 - i) % n]), mat)
     return inner + outer
 
 
@@ -1013,8 +1018,79 @@ def build_ele():
     return unit
 
 
+def ring_tube(b, c, r, thick, mat, n=10):
+    """A closed ring lying flat (a torc), its section a small square."""
+    c = Vector(c)
+    Z = Vector((0, 0, 1))
+    rings = []
+    for k in range(n):
+        a = radians(360 * k / n)
+        radial = Vector((cos(a), sin(a), 0))
+        p = c + r * radial
+        rings.append([b.v(p + thick * cos(radians(q)) * radial + thick * sin(radians(q)) * Z) for q in (45, 135, 225, 315)])
+    for k in range(n):
+        b.bridge(rings[k], rings[(k + 1) % n], mat)
+
+
+def gaul_head(col, name):
+    """What makes a Gaesatus's head: hair limed into spikes, a drooping moustache; and the gold torc at his neck."""
+    b = sb.Builder(['lime', 'gold'])
+    centre = Vector((0, 0.01, 1.43))
+    for d in ((0, -0.35, 1), (0.45, -0.1, 0.9), (-0.45, -0.1, 0.9), (0.3, 0.45, 0.85), (-0.3, 0.45, 0.85), (0, 0.6, 0.75),
+              (0.55, 0.3, 0.45), (-0.55, 0.3, 0.45), (0, 0.15, 1)):
+        d = Vector(d).normalized()
+        base = centre + d * 0.16
+        tube(b, [base, base + d * 0.13], [0.045, 0.006], 'lime', n=4, up=Vector((0, 1, 0)) if abs(d.y) < 0.9 else Vector((1, 0, 0)))
+    for sx in (1, -1):
+        beam(b, (0, -0.205, 1.322), (0.075 * sx, -0.175, 1.282), 0.012, 0.016, 'lime', up=Vector((0, -1, 0)))
+    head = b.finish(name, col, [])
+    b = sb.Builder(['gold'])
+    ring_tube(b, (0, 0.0, 1.185), 0.095, 0.014, 'gold')
+    torc = b.finish(name + '_torc', col, [])
+    return head, torc
+
+
+def build_gae():
+    """Gaesatae (Gaul): bare-chested in chequered trousers, hair limed into spikes, a moustache and a gold torc; the long
+    oval shield in the power's colour with a gold spine and boss, a long sword raised to strike."""
+    rig, (body, skirt) = sb.build_base(style='gaul')
+    col = sb.collection('Units')
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    aim(rig, 'upper_arm.R', (-0.38, 0.22, 0.9)); aim(rig, 'forearm.R', (-0.08, -0.2, 0.97)); aim(rig, 'hand.R', (0, -0.15, 0.99))
+    aim(rig, 'upper_arm.L', (0.24, -0.16, -0.96)); aim(rig, 'forearm.L', (-0.3, -0.94, 0.14)); aim(rig, 'hand.L', (-0.3, -0.94, 0.14))
+    aim(rig, 'thigh.L', (0.08, -0.3, -0.95)); aim(rig, 'thigh.R', (-0.08, 0.2, -0.98))     # a stride
+    bpy.ops.object.mode_set(mode='OBJECT')
+    hd, torc = gaul_head(col, 'gae_head')
+    hd.matrix_world = deform(rig, 'head'); torc.matrix_world = deform(rig, 'neck')
+    # the shield: a long oval, its face in the power's colour, a bronze edge, a gold spine and boss
+    lh = bone_point(rig, 'hand.L', 0.5)
+    c = Vector((lh.x - 0.02, lh.y - 0.07, 0.92))
+    b = sb.Builder(['tint', 'bronze', 'gold'])
+    flap(b, c, 0.29, 0.58, 0.03, 'tint', yaw=90, rim='bronze', n=16)
+    beam(b, c + Vector((0, -0.016, -0.5)), c + Vector((0, -0.016, 0.5)), 0.022, 0.012, 'gold', up=Vector((0, -1, 0)))
+    beam(b, c + Vector((0, -0.01, 0)), c + Vector((0, -0.07, 0)), 0.06, 0.08, 'gold', up=Vector((0, 0, 1)))
+    shield = b.finish('gae_shield', col, [])
+    # the sword, raised: a long blade, gold guard and pommel
+    grip = bone_point(rig, 'hand.R', 0.45)
+    d = Vector((0.05, 0.3, 0.95)).normalized()
+    b = sb.Builder(['steel', 'gold', 'leather'])
+    beam(b, grip - d * 0.1, grip + d * 0.06, 0.016, 0.016, 'leather', up=Vector((0, -1, 0)))               # grip
+    beam(b, grip + d * 0.06, grip + d * 0.09, 0.065, 0.018, 'gold', up=Vector((0, -1, 0)))                 # guard
+    beam(b, grip + d * 0.09, grip + d * 0.86, 0.03, 0.007, 'steel', up=Vector((0, -1, 0)))                 # blade
+    beam(b, grip - d * 0.14, grip - d * 0.1, 0.028, 0.028, 'gold', up=Vector((0, -1, 0)))                  # pommel
+    sword = b.finish('gae_sword', col, [])
+    pieces = [(body, 'body'), (hd, 0), (torc, 0), (shield, 0), (sword, 3)]     # no tunic skirt: trousers
+    skirt.hide_set(True); skirt.hide_render = True
+    unit = bake('gae', col, pieces)
+    for ob, *_ in pieces:
+        ob.hide_set(True); ob.hide_render = True
+    rig.hide_set(True)
+    return unit
+
+
 UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav, 'siege': build_siege, 'leg': build_leg, 'legT': build_legT,
-         'char': build_char, 'ele': build_ele}
+         'char': build_char, 'ele': build_ele, 'gae': build_gae}
 
 if __name__ == '__main__':
     for key in [a for a in sys.argv[1:] if a in UNITS] or list(UNITS):

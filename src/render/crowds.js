@@ -228,11 +228,11 @@ export function buildCrowdGeos() {
     { geo: new THREE.TorusGeometry(0.032, 0.007, 4, 10), color: GOLD, rot: [Math.PI / 2, 0, 0], pos: [0, 0.238, 0.005] },
     head(0.275),
     { geo: cone(0.05, 0.085, 7), color: '#ece0b8', pos: [0, 0.335, -0.008] },
-    { geo: cyl(0.084, 0.084, 0.014, 14), color: W, tint: 1, rot: [Math.PI / 2, 0, 0], scale: [0.78, 1, 1.75], pos: [-0.05, 0.18, 0.066] },
-    { geo: sph(0.02, 6, 4), color: GOLD, pos: [-0.05, 0.18, 0.078] },
-    { geo: box(0.008, 0.14, 0.005), color: GOLD, pos: [-0.05, 0.18, 0.074] },
-    { geo: box(0.014, 0.17, 0.006), color: STEEL, pos: [0.075, 0.33, 0.03], part: 3 },
-    { geo: box(0.05, 0.012, 0.012), color: GOLD, pos: [0.075, 0.245, 0.03], part: 3 },
+    { geo: cyl(0.084, 0.084, 0.014, 14), color: W, tint: 1, rot: [Math.PI / 2, 0, 0], scale: [0.78, 1, 1.75], pos: [0.05, 0.18, 0.066] },   // shield on the left arm
+    { geo: sph(0.02, 6, 4), color: GOLD, pos: [0.05, 0.18, 0.078] },
+    { geo: box(0.008, 0.14, 0.005), color: GOLD, pos: [0.05, 0.18, 0.074] },
+    { geo: box(0.014, 0.17, 0.006), color: STEEL, pos: [-0.075, 0.33, 0.03], part: 3 },                       // sword in the right hand, as up close
+    { geo: box(0.05, 0.012, 0.012), color: GOLD, pos: [-0.075, 0.245, 0.03], part: 3 },
   ]);
   // chariot (Egypt): two-horse team, painted car, six-spoke wheels, driver and archer
   const wheel = (x) => [
