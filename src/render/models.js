@@ -18,6 +18,7 @@ export const MODEL_URLS = {
   leg: new URL('../assets/units/leg.glb', import.meta.url).href,
   legT: new URL('../assets/units/legT.glb', import.meta.url).href,
   char: new URL('../assets/units/char.glb', import.meta.url).href,
+  ele: new URL('../assets/units/ele.glb', import.meta.url).href,
 };
 export const MODELS = {};                      // unit type -> geometry for the crowd material, once loaded
 

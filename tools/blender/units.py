@@ -845,8 +845,176 @@ def build_char():
     return unit
 
 
+def flap(b, c, ry, rz, thick, mat, yaw=0.0, n=10):
+    """A flat oval plate in the YZ plane (an elephant's ear), turned by yaw degrees about Z; returns its edge vertices."""
+    c = Vector(c)
+    R = Matrix.Rotation(radians(yaw), 3, 'Z')
+    def ring(x):
+        return [b.v(c + R @ Vector((x, ry * cos(radians(360 * k / n)), rz * sin(radians(360 * k / n))))) for k in range(n)]
+    inner, outer = ring(-thick / 2), ring(thick / 2)
+    b.bridge(inner, outer, mat)
+    for face_ring in (list(reversed(inner)), outer):
+        for k in (0, 3, 6):
+            b.face((face_ring[k], face_ring[k + 1], face_ring[k + 2], face_ring[k + 3]), mat)
+        b.face((face_ring[9], face_ring[0], face_ring[3], face_ring[6]), mat)
+    return inner + outer
+
+
+def elephant(col):
+    """A war elephant facing -Y: body, neck and head as one mirrored piece (all quads), eyes; legs, ears, trunk,
+    tusks and tail as their own pieces. Returns (body, legs, ears, trunk, tusks, tail)."""
+    b = sb.Builder(['ele', 'dark'])
+    R = [horse_ring(b, *spec) for spec in (
+        ((0, 1.02, 1.30), (0, -1, 0), 0.20, 0.22, 0.24),           # rump end
+        ((0, 0.88, 1.32), (0, -1, 0), 0.40, 0.42, 0.42),
+        ((0, 0.55, 1.33), (0, -1, 0), 0.50, 0.52, 0.50),           # haunches
+        ((0, 0.10, 1.33), (0, -1, 0), 0.52, 0.55, 0.52),           # barrel
+        ((0, -0.35, 1.36), (0, -1, 0.05), 0.50, 0.56, 0.50),       # shoulders
+        ((0, -0.62, 1.45), (0, -1, 0.2), 0.38, 0.44, 0.42),        # neck
+        ((0, -0.85, 1.62), (0, -1, 0.0), 0.36, 0.40, 0.42),        # the dome of the head
+        ((0, -1.05, 1.55), (0, -0.85, -0.5), 0.28, 0.30, 0.32),    # forehead, face
+    )]
+    b.half_cap(list(reversed(R[0])), (0, 1.06, 1.3), 'ele')
+    for i in range(len(R) - 1):
+        b.bridge(R[i], R[i + 1], 'ele', closed=False)
+    b.half_cap(R[-1], (0, -1.16, 1.42), 'ele')
+    beam(b, (0.255, -1.0, 1.66), (0.27, -0.96, 1.66), 0.02, 0.03, 'dark', up=Vector((0, 0, 1)))   # eye
+    body = b.finish('ele_body', col, [])
+    m = body.modifiers.new('Mirror', 'MIRROR')
+    m.use_axis[0] = True; m.use_clip = True; m.use_mirror_merge = True; m.merge_threshold = 0.001
+
+    b = sb.Builder(['ele_dark'])
+    for x in (0.3, -0.3):
+        for y in (-0.45, 0.6):
+            pts = [Vector((x, y, z)) for z in (1.2, 0.6, 0.25, 0.06, 0.0)]
+            tube(b, pts, [0.24, 0.2, 0.19, 0.22, 0.21], 'ele_dark', n=6, up=Vector((0, -1, 0)))
+    legs = b.finish('ele_legs', col, [])
+
+    b = sb.Builder(['ele'])
+    ear_edges = []
+    for sx in (1, -1):
+        ear_edges += flap(b, (0.42 * sx, -0.74, 1.6), 0.24, 0.3, 0.04, 'ele', yaw=-22 * sx)
+    ears = b.finish('ele_ears', col, [])
+
+    b = sb.Builder(['ele'])
+    tube(b, [Vector(p) for p in ((0, -1.1, 1.48), (0, -1.24, 1.18), (0, -1.3, 0.85), (0, -1.27, 0.52), (0, -1.18, 0.3))],
+         [0.13, 0.11, 0.085, 0.065, 0.05], 'ele', n=6, up=Vector((0, -1, 0)))
+    trunk = b.finish('ele_trunk', col, [])
+
+    b = sb.Builder(['ivory'])
+    for sx in (1, -1):
+        tube(b, [Vector((0.15 * sx, -1.1, 1.32)), Vector((0.17 * sx, -1.34, 1.13)), Vector((0.15 * sx, -1.56, 1.17))],
+             [0.045, 0.034, 0.012], 'ivory', n=4, up=Vector((1, 0, 0)))
+    tusks = b.finish('ele_tusks', col, [])
+
+    b = sb.Builder(['ele', 'dark'])
+    tube(b, [Vector((0, 1.03, 1.42)), Vector((0, 1.12, 1.15)), Vector((0, 1.13, 0.9))], [0.035, 0.025, 0.02], 'ele', n=4, up=Vector((1, 0, 0)))
+    tube(b, [Vector((0, 1.13, 0.92)), Vector((0, 1.13, 0.78))], [0.045, 0.02], 'dark', n=4, up=Vector((1, 0, 0)))   # tuft
+    tail = b.finish('ele_tail', col, [])
+    return body, legs, ears, trunk, tusks, tail
+
+
+def ele_blanket(col):
+    """A blanket in the power's colour over the elephant's back, a gold border along its hem."""
+    b = sb.Builder(['tint', 'gold'])
+    rows = [[b.v((x, y, z)) for x, z in ((0, 1.95), (0.4, 1.73), (0.565, 1.31), (0.558, 1.08), (0.555, 1.0))] for y in (-0.45, 0.05, 0.55)]
+    for r0, r1 in ((rows[0], rows[1]), (rows[1], rows[2])):
+        b.bridge(r0, r1, ['tint', 'tint', 'tint', 'gold'], closed=False)
+    ob = b.finish('ele_blanket', col, [])
+    m = ob.modifiers.new('Mirror', 'MIRROR')
+    m.use_axis[0] = True; m.use_clip = True; m.use_mirror_merge = True; m.merge_threshold = 0.001
+    s = ob.modifiers.new('Solidify', 'SOLIDIFY')
+    s.thickness = 0.02; s.offset = 1; s.use_even_offset = True
+    return ob
+
+
+def howdah(col):
+    """The wooden tower on the elephant's back, its rim in the power's colour."""
+    b = sb.Builder(['wood', 'tint', 'gold'])
+    Y, Z = Vector((0, 1, 0)), Vector((0, 0, 1))
+    beam(b, (-0.43, 0.05, 1.96), (0.43, 0.05, 1.96), 0.46, 0.03, 'wood', up=Z)              # floor
+    for y in (-0.38, 0.48):
+        beam(b, (-0.4, y, 2.18), (0.4, y, 2.18), 0.025, 0.22, 'wood', up=Z)                # front and back
+        beam(b, (-0.44, y, 2.42), (0.44, y, 2.42), 0.045, 0.03, 'tint', up=Z)              # rim
+    for x in (-0.4, 0.4):
+        beam(b, (x, -0.38, 2.18), (x, 0.48, 2.18), 0.025, 0.22, 'wood', up=Z)              # sides
+        beam(b, (x, -0.42, 2.42), (x, 0.52, 2.42), 0.045, 0.03, 'tint', up=Z)
+        for y in (-0.38, 0.48):
+            beam(b, (x, y, 1.96), (x, y, 2.56), 0.045, 0.045, 'wood', up=Y)                # corner posts
+            beam(b, (x, y, 2.56), (x, y, 2.62), 0.06, 0.06, 'gold', up=Y)                  # their caps
+    return b.finish('ele_howdah', col, [])
+
+
+def build_ele():
+    """War elephant (Carthage): tusks, flapping ears, a trunk that swings forward in a fight; a blanket and a tower,
+    a soldier in it with a javelin raised to throw, a mahout on the neck with his goad."""
+    col = sb.collection('Units')
+    body, legs, ears, trunk, tusks, tail = elephant(col)
+    blanket, tower = ele_blanket(col), howdah(col)
+    gait = lambda co: 1 if (co.x > 0) == (co.y < 0.07) else 2          # diagonal pairs
+    ear_wave = lambda co: max(0.0, min(1.0, (abs(co.x) - 0.4) / 0.25)) * 0.5
+    tail_wave = lambda co: max(0.0, min(1.0, (1.3 - co.z) / 0.5)) * 0.7
+    pieces = [(body, 0), (legs, gait), (ears, 0, ear_wave), (trunk, 3), (tusks, 0), (tail, 0, tail_wave),
+              (blanket, 0), (tower, 0)]
+
+    # the soldier in the tower, javelin raised over his shoulder
+    rig, (sbody, sskirt) = sb.build_base()
+    for ob in (rig, sbody, sskirt):
+        ob.name = ob.name + '_tower'
+    rig.location = (0, 0.05, 1.99)
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    aim(rig, 'upper_arm.R', (-0.35, 0.3, 0.88)); aim(rig, 'forearm.R', (-0.05, -0.25, 0.97)); aim(rig, 'hand.R', (0, -0.3, 0.95))
+    aim(rig, 'upper_arm.L', (0.3, -0.45, -0.84)); aim(rig, 'forearm.L', (0.05, -0.97, 0.2)); aim(rig, 'hand.L', (0.05, -0.97, 0.2))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    grip = bone_point(rig, 'hand.R', 0.45)
+    d = Vector((0, -0.95, -0.3)).normalized()
+    b = sb.Builder(['wood', 'steel'])
+    tube(b, [grip - d * 0.6, grip + d * 0.95], 0.02, 'wood', n=4, up=Vector((1, 0, 0)))
+    head_ = grip + d * 0.95
+    base = [b.v(head_ + 0.03 * cos(radians(a)) * Vector((1, 0, 0)) + 0.03 * sin(radians(a)) * d.cross(Vector((1, 0, 0)))) for a in range(0, 360, 90)]
+    tip = b.v(head_ + d * 0.16)
+    b.face(tuple(reversed(base)), 'steel')
+    for i in range(4):
+        b.face((base[i], base[(i + 1) % 4], tip), 'steel')
+    javelin = b.finish('ele_javelin', col, [])
+    hm = helmet(col, 'ele_helmet'); hm.matrix_world = deform(rig, 'head')
+    pieces += [(sbody, 'rider'), (sskirt, 0), (hm, 0), (javelin, 3)]
+
+    # the mahout, astride the neck, in linen
+    rig2, (mbody, mskirt) = sb.build_base()
+    for ob in (mbody, mskirt):
+        for i, m in enumerate(ob.data.materials):
+            if m.name == 'tint':
+                ob.data.materials[i] = sb.material('linen')
+    rig2.location = (0, -0.6, 1.38)
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = rig2
+    bpy.ops.object.mode_set(mode='POSE')
+    for s_, k in (('L', 1), ('R', -1)):
+        aim(rig2, 'thigh.' + s_, (0.75 * k, -0.4, -0.5))
+        aim(rig2, 'shin.' + s_, (0.15 * k, 0.15, -0.97))
+        aim(rig2, 'foot.' + s_, (0.05 * k, -0.95, -0.3))
+        aim(rig2, 'upper_arm.' + s_, (0.2 * k, -0.3, -0.93))
+        aim(rig2, 'forearm.' + s_, (-0.1 * k, -0.9, 0.4))
+        aim(rig2, 'hand.' + s_, (-0.1 * k, -0.9, 0.4))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    hr = bone_point(rig2, 'hand.R', 0.45)
+    b = sb.Builder(['wood'])
+    tube(b, [hr + Vector((0.0, 0.12, -0.12)), hr + Vector((0.0, -0.3, 0.3))], 0.014, 'wood', n=4, up=Vector((1, 0, 0)))   # goad
+    goad = b.finish('ele_goad', col, [])
+    pieces += [(mbody, 0), (mskirt, 0), (goad, 0)]
+
+    unit = bake('ele', col, pieces)
+    for ob, *_ in pieces:
+        ob.hide_set(True); ob.hide_render = True
+    rig.hide_set(True); rig2.hide_set(True)
+    return unit
+
+
 UNITS = {'spear': build_spear, 'arch': build_arch, 'cav': build_cav, 'siege': build_siege, 'leg': build_leg, 'legT': build_legT,
-         'char': build_char}
+         'char': build_char, 'ele': build_ele}
 
 if __name__ == '__main__':
     for key in [a for a in sys.argv[1:] if a in UNITS] or list(UNITS):

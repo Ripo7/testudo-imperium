@@ -11,7 +11,7 @@ from math import cos, sin, radians, degrees
 COLOURS = {'skin': '#e9c9a6', 'tint': '#ffffff', 'leather': '#6b4f37', 'dark': '#3d3128', 'hair': '#4a3526',
            'steel': '#9aa2ab', 'bronze': '#c8a560', 'wood': '#7a5434', 'bow': '#5a3a22', 'linen': '#e8e0d0',
            'horse': '#7a5537', 'horse_dark': '#4f3624', 'rope': '#c9b48a', 'iron': '#6c727a',
-           'gold': '#d9b04a', 'nemes': '#2f3a8a'}
+           'gold': '#d9b04a', 'nemes': '#2f3a8a', 'ele': '#9a948d', 'ele_dark': '#7c766f', 'ivory': '#f1e8d4'}
 
 
 def srgb_to_lin(c):
