@@ -10,7 +10,9 @@ from math import cos, sin, radians, degrees
 
 COLOURS = {'skin': '#e9c9a6', 'tint': '#ffffff', 'leather': '#6b4f37', 'dark': '#3d3128', 'hair': '#4a3526',
            'steel': '#9aa2ab', 'bronze': '#c8a560', 'wood': '#7a5434', 'bow': '#5a3a22', 'linen': '#e8e0d0',
-           'horse': '#7a5537', 'horse_dark': '#4f3624', 'rope': '#c9b48a', 'iron': '#6c727a'}
+           'horse': '#7a5537', 'horse_dark': '#4f3624', 'rope': '#c9b48a', 'iron': '#6c727a',
+           'gold': '#d9b04a', 'nemes': '#2f3a8a', 'ele': '#9a948d', 'ele_dark': '#7c766f', 'ivory': '#f1e8d4',
+           'plaid': '#7d6a8c', 'plaid_dark': '#5b4c69', 'lime': '#ece0b8'}
 
 
 def srgb_to_lin(c):
@@ -127,10 +129,25 @@ BONES = [  # name, head, tail, parent, connected
 GROUPS = ['hips', 'spine', 'chest', 'neck', 'head'] + [n + s for n in ('upper_arm', 'forearm', 'hand', 'thigh', 'shin', 'foot') for s in ('.L', '.R')]
 
 
-def build_body(col, armour=False):
-    """armour: a segmented iron cuirass over the chest and shoulders (legionaries), two more rings for its bands."""
-    b = Builder(['skin', 'tint', 'leather', 'dark', 'hair'] + (['steel', 'iron'] if armour else []))
-    plate = 'steel' if armour else 'tint'
+# what each part of the body wears, by default a tunic in the power's colour, bare legs, leather wraps and shoes
+DRESS = {'tunic': 'tint', 'chest': 'tint', 'plate': 'tint', 'sleeve': 'tint', 'thigh': 'skin', 'knee': 'skin', 'calf': 'skin',
+         'wrap': 'leather', 'shoe': 'leather', 'hair': 'hair'}
+STYLES = {
+    # Gaesatae: bare-chested, chequered trousers to the ankle, hair washed in lime
+    'gaul': {'tunic': 'plaid', 'chest': 'skin', 'plate': 'skin', 'sleeve': 'skin', 'thigh': 'plaid', 'knee': 'plaid_dark',
+             'calf': 'plaid', 'wrap': 'plaid_dark', 'hair': 'lime'},
+}
+
+
+def build_body(col, armour=False, style=None):
+    """armour: a segmented iron cuirass over the chest and shoulders (legionaries), two more rings for its bands.
+    style: another dress (STYLES), e.g. 'gaul'."""
+    M = dict(DRESS, **STYLES.get(style, {}))
+    if armour:
+        M['plate'] = 'steel'
+    used = ['skin', 'tint', 'leather', 'dark', 'hair'] + (['steel', 'iron'] if armour else [])
+    b = Builder(used + sorted(set(M.values()) - set(used)))
+    plate = M['plate']
     # torso: half rings front centre (y<0) -> front-side -> side -> back-side -> back centre, x >= 0
     P = b.half_ring(0.62, [(0, -0.135), (0.15, -0.115), (0.20, 0.0), (0.15, 0.115), (0, 0.14)], hips=1)
     W = b.half_ring(0.78, [(0, -0.132), (0.133, -0.108), (0.172, 0.0), (0.133, 0.103), (0, 0.124)], hips=0.5, spine=0.5)
@@ -140,7 +157,7 @@ def build_body(col, armour=False):
     N0 = b.half_ring(1.165, [(0, -0.08), (0.06, -0.06), (0.085, 0.0), (0.06, 0.06), (0, 0.08)], chest=0.5, neck=0.5)
     S[0].co.z = 1.12; S[4].co.z = 1.125                      # collarbone and nape a touch higher than the shoulder
     b.weigh(C[1:4] + S[1:4], upper_arm_L=0.3)                # the shoulder follows the arm a little
-    b.bridge(P, W, 'tint', closed=False)
+    b.bridge(P, W, M['tunic'], closed=False)
     b.bridge(W, W2, 'leather', closed=False)                  # belt
     if armour:                                                # the cuirass's bands, steel and darker iron
         mid = lambda k, f: [(W2[i].co.x + (C[i].co.x - W2[i].co.x) * f, W2[i].co.y + (C[i].co.y - W2[i].co.y) * f) for i in range(5)]
@@ -150,7 +167,7 @@ def build_body(col, armour=False):
         b.bridge(A1, A2, 'iron', closed=False)
         b.bridge(A2, C, 'steel', closed=False)
     else:
-        b.bridge(W2, C, 'tint', closed=False)
+        b.bridge(W2, C, M['chest'], closed=False)
     b.face((C[0], C[1], S[1], S[0]), plate)                  # chest; the side is the arm's
     b.face((C[3], C[4], S[4], S[3]), plate)                  # back
     b.bridge(S, N0, plate, closed=False)                      # top of the shoulders, up to the neckline
@@ -166,11 +183,12 @@ def build_body(col, armour=False):
     Ns[0].co.z = 1.35                                          # nose tip
     b.bridge(N0, N1, 'skin', closed=False)
     b.bridge(N1, J, 'skin', closed=False)
-    b.bridge(J, Ns, ['skin', 'skin', 'skin', 'hair'], closed=False)
-    b.bridge(Ns, E, ['skin', 'skin', 'hair', 'hair'], closed=False)
-    b.bridge(E, B, ['skin', 'skin', 'hair', 'hair'], closed=False)
-    b.bridge(B, R, 'hair', closed=False)
-    b.half_cap(R, (0, 0, 1.605), 'hair', head=1)
+    H_ = M['hair']
+    b.bridge(J, Ns, ['skin', 'skin', 'skin', H_], closed=False)
+    b.bridge(Ns, E, ['skin', 'skin', H_, H_], closed=False)
+    b.bridge(E, B, ['skin', 'skin', H_, H_], closed=False)
+    b.bridge(B, R, H_, closed=False)
+    b.half_cap(R, (0, 0, 1.605), H_, head=1)
     # eyes: two small dark blocks under the brow (one here, the mirror makes the other)
     ex, ey, ez = 0.062, -0.163, 1.437
     eye = [b.v((ex + dx, ey + dy, ez + dz), head=1) for dz in (-0.017, 0.017) for dy in (-0.007, 0.009) for dx in (-0.016, 0.016)]
@@ -194,7 +212,7 @@ def build_body(col, armour=False):
     Pm, u = arm_ring(WRIST + 0.045 * ARM2, ARM2, u, 0.04, 0.06, hand_L=1)                        # palm, facing the thigh
     Hd, u = arm_ring(HAND_END, ARM2, u, 0.036, 0.05, hand_L=1)                                    # finger ends
     b.bridge(hole, D, plate)                                  # shoulder (a plate on the cuirass)
-    b.bridge(D, Sl, 'tint')
+    b.bridge(D, Sl, M['sleeve'])
     b.bridge(Sl, El, 'skin')
     b.bridge(El, Wr, 'skin')
     b.bridge(Wr, Pm, 'skin')
@@ -215,11 +233,11 @@ def build_body(col, armour=False):
     shoe = [(-0.042, -0.158), (0.05, -0.158), (0.06, -0.03), (0.044, 0.066), (-0.038, 0.066), (-0.05, -0.03)]
     F = [b.v((0.114 + x, y, 0.042), foot_L=1) for x, y in shoe]
     Sb = [b.v((0.114 + x * 1.06, y * 1.04, 0.0), foot_L=1) for x, y in shoe]
-    b.bridge(top, T, 'skin')
-    b.bridge(T, K, 'skin')
-    b.bridge(K, Cf, 'skin')
-    b.bridge(Cf, A, 'leather')                                # leg wraps
-    b.bridge(A, F, 'leather')                                 # shoe
+    b.bridge(top, T, M['thigh'])
+    b.bridge(T, K, M['knee'])
+    b.bridge(K, Cf, M['calf'])
+    b.bridge(Cf, A, M['wrap'])                                # leg wraps
+    b.bridge(A, F, M['shoe'])                                 # shoe
     b.bridge(F, Sb, 'dark')                                   # sole
     b.cap6(list(reversed(Sb)), 'dark')
     ob = b.finish('soldier_base', col, GROUPS)
@@ -269,10 +287,10 @@ def build_rig(col):
     return rig
 
 
-def build_base(armour=False):
+def build_base(armour=False, style=None):
     col = collection('Soldier')
     rig = build_rig(col)
-    pieces = [build_body(col, armour), build_skirt(col)]
+    pieces = [build_body(col, armour, style), build_skirt(col)]
     for ob in pieces:
         ob.parent = rig
         m = ob.modifiers.new('Mirror', 'MIRROR')
