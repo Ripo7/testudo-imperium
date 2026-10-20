@@ -1,7 +1,7 @@
 import { knowsArmy } from './sight.js';
 import { atPeace } from './diplomacy.js';
 import { cellOf, dist, emptyComp, GS, MAP, menOf } from './state.js';
-import { clamp, dampAngle } from '../core/math.js';
+import { clamp, dampAngle, sinCos } from '../core/math.js';
 import { BIOME, BIOME_NAME, Heap, MOVE, N8 } from '../map/generate.js';
 import { BASE_SPEED, sigOf, TYPES5 } from './data.js';
 import { startSiege } from './battles.js';
@@ -55,6 +55,20 @@ export function pathTime(a, path, pi = 0) {
   }
   return t;
 }
+// where an army marching along a path will be after each of the times in `at` (seconds from now, rising), as long as
+// it is still on its way: [[x, y], ...] (the march alone: a battle on the road is not foreseen)
+export function pathPointsAt(a, path, pi, at) {
+  const out = [];
+  if (!path) return out;
+  let t = 0, px = a.x, py = a.y, j = 0;
+  for (let k = pi; k < path.length && j < at.length; k++) {
+    const i = path[k], x = i % MAP.W, y = (i / MAP.W) | 0;
+    const dt = Math.hypot(x - px, y - py) / Math.max(0.05, speedAt(a, i, x, y));
+    while (j < at.length && t + dt >= at[j]) { const f = dt > 0 ? (at[j] - t) / dt : 1; out.push([px + (x - px) * f, py + (y - py) * f]); j++; }
+    t += dt; px = x; py = y;
+  }
+  return out;
+}
 // what the ground at (x, y) means for a marching army, in words
 export function groundInfo(x, y) {
   const i = cellOf(clamp(x, 0, MAP.W - 1), clamp(y, 0, MAP.H - 1)), m = MAP.move[i];
@@ -71,8 +85,8 @@ export function splitArmy(a) {
   for (const t of TYPES5) { half[t] = t === 'siege' ? Math.floor(a.comp[t] / 2) : Math.floor(a.comp[t] / 2 / 10) * 10; a.comp[t] -= half[t]; }
   const b = makeArmy(a.owner, half, a.x, a.y);
   b.stance = a.stance; b.wins = a.wins; b.heading = a.heading;
-  const ang = a.heading + Math.PI / 2;
-  const nx = a.x + Math.sin(ang) * 1.6, ny = a.y + Math.cos(ang) * 1.6;
+  const { s, c } = sinCos(a.heading + Math.PI / 2);
+  const nx = a.x + s * 1.6, ny = a.y + c * 1.6;
   if (MAP.move[cellOf(nx, ny)] < Infinity) orderMove(b, nx, ny);
   return b;
 }

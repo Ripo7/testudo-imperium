@@ -35,14 +35,14 @@ const site = await serve();
 const out = path.join(ROOT, 'tools/out'); fs.mkdirSync(out, { recursive: true });
 const file = path.join(out, `balance-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
 const R = await runWars({ url: site.url, n: N, workers: WORKERS, fn: WAR,
-  onResult: (r, k, n) => { fs.appendFileSync(file, JSON.stringify(r) + '\n'); console.log(`${String(k).padStart(3)}/${n}  ${NAMES[r.winner]} wins after ${(r.time / 60).toFixed(1)} min${r.over ? '' : ' (time limit)'}`); } });
+  onResult: (r, k, n) => { fs.appendFileSync(file, JSON.stringify(r) + '\n'); console.log(`${String(k).padStart(3)}/${n}  ${NAMES[r.winner]} wins after ${(r.time / 60).toFixed(1)} min, ${Math.round(r.time / 30)} turns${r.over ? '' : ' (time limit)'}`); } });
 site.close();
 
 const wins = NAMES.map((_, f) => R.filter((r) => r.winner === f).length);
 const q = quantiles(R.map((r) => r.time / 60));
 console.log(`\n${R.length} wars${FOG ? ', fog of war on' : ', no fog'}`);
 console.log('wins      ' + NAMES.map((nm, f) => `${nm} ${wins[f]} (${Math.round(wins[f] / R.length * 100)}%)`).join(' · '));
-console.log(`length    median ${q.p50.toFixed(1)} min · p10 ${q.p10.toFixed(1)} · p90 ${q.p90.toFixed(1)} · longest ${q.max.toFixed(1)} · unfinished ${R.filter((r) => !r.over).length}`);
+console.log(`length    median ${q.p50.toFixed(1)} min (${Math.round(q.p50 * 2)} turns) · p10 ${q.p10.toFixed(1)} · p90 ${q.p90.toFixed(1)} · longest ${q.max.toFixed(1)} · unfinished ${R.filter((r) => !r.over).length}`);
 console.log(`powers wiped out: ${R.reduce((s, r) => s + r.alive.filter((a) => !a).length, 0)}`);
 for (const m of ['240', '600', '1200']) {
   const S = R.map((r) => r.snaps[m]).filter(Boolean);

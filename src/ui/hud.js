@@ -1,4 +1,4 @@
-import { atWar, endEnvoy, makePeace, mins, relOf, treatyOn, warsOf } from '../game/diplomacy.js';
+import { atWar, endEnvoy, makePeace, relOf, treatyOn, warsOf } from '../game/diplomacy.js';
 import { setHooks } from '../game/hooks.js';
 import { DISPUTED, holdsIn, placesOf, STAND } from '../game/standing.js';
 import { GS, MAP, menOf, ownerName } from '../game/state.js';
@@ -6,9 +6,11 @@ import { $, isTouch, store } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { CAM, projectCell } from '../render/camera.js';
 import { buildFortMesh, refreshCityMesh, refreshFortMesh, removeFortMesh } from '../render/cities.js';
-import { FACTIONS, PLAYER, pName, RES, TREATY_TIME, U } from '../game/data.js';
-import { clock, fcss, fmt, fmtInt, fmtRate, fname, GLYPH, IC } from './format.js';
-import { _pp, $hint, $log, clearSel, cycleArmy, idleArmies, ME, UI } from './state.js';
+import { FACTIONS, PLAYER, pName, RES, TREATY_TIME, TURN_TIME, U } from '../game/data.js';
+import { turnOf, turnsDone, turnsIn, turnsTxt } from '../game/turns.js';
+import { dateOf, fcss, fmt, fmtInt, fmtTurnRate, fname, GLYPH, IC, perTurn } from './format.js';
+import { _pp, $hint, $log, clearSel, cycleArmy, idleArmies, ME, ordersWait, UI } from './state.js';
+import { noteNews, turnButton } from './turnflow.js';
 import { onImpDone, renderPanel } from './panel.js';
 import { showOver } from './screens.js';
 import { clearSave } from './persist.js';
@@ -42,16 +44,14 @@ export function updateHUD() {
   }
   RES.forEach((r, i) => {
     const e = resEls[i];
-    const v = fmtInt(F.res[r]), rt = fmtRate(F.net[r]);
+    const v = fmtInt(F.res[r]), rt = fmtTurnRate(F.net[r]);
     if (e.b.textContent !== v) e.b.textContent = v;
-    if (e.s.textContent !== rt + '/s') { e.s.textContent = rt + '/s'; e.s.className = F.net[r] < -0.05 ? 'neg' : F.net[r] > 0.05 ? 'pos' : ''; }
+    if (e.s.textContent !== rt) { e.s.textContent = rt; e.s.className = F.net[r] < -0.05 ? 'neg' : F.net[r] > 0.05 ? 'pos' : ''; }
     e.el.classList.toggle('warn', (r === 'food' && F.starving) || (r === 'gold' && F.unpaid));
-    e.el.title = `${r}: income ${F.inc[r].toFixed(1)}/s, upkeep ${F.upk[r].toFixed(1)}/s`;
+    e.el.title = `${r}: ${fmt(perTurn(F.inc[r]))} a turn coming in, ${fmt(perTurn(F.upk[r]))} going out`;
   });
-  const s = Math.floor(GS.time);
-  $('clock').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-  document.querySelectorAll('#speed button').forEach((b) => b.classList.toggle('on', +b.dataset.sp === GS.speed));
-  const need = STAND.need, ago = sampleAgo(60), np = GS.factions.length, PB = 1 + 3 * np;   // PB: provinces in the history rows
+  updateTurnControls();
+  const need = STAND.need, ago = sampleAgo(2 * TURN_TIME), np = GS.factions.length, PB = 1 + 3 * np;   // PB: provinces in the history rows
   const disputedFor = (f) => MAP.provinces.filter((P) => P.owner === DISPUTED && holdsIn(P, f)).length;
   let h = `<h4>The powers${GS.auto ? ', all AI' : ''}</h4>`;
   if (GS.auto && GS.fog) h += `<div class="note" style="margin:-2px 0 4px;font-size:11.5px">Seen through the eyes of <b style="color:${FACTIONS[UI.viewF].css}">${FACTIONS[UI.viewF].name}</b> · click a power to switch</div>`;
@@ -62,13 +62,13 @@ export function updateHUD() {
     const men = GS.armies.reduce((m, a) => m + (!a.dead && a.owner === Fx.id ? menOf(a.comp) : 0), 0);
     const view = GS.auto && Fx.id === UI.viewF;
     const d = ago && Fx.alive && ago[PB + Fx.id] != null ? prov - ago[PB + Fx.id] : 0;
-    const trend = d ? `<small class="tr ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'Won' : 'Lost'} ${Math.abs(d)} province${Math.abs(d) > 1 ? 's' : ''} in the last minute">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</small>` : '';
+    const trend = d ? `<small class="tr ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'Won' : 'Lost'} ${Math.abs(d)} province${Math.abs(d) > 1 ? 's' : ''} in the last two turns">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</small>` : '';
     const dis = Fx.alive ? disputedFor(Fx.id) : 0;
     const tip = !GS.auto && Fx.isPlayer ? 'Overview of your realm' : GS.auto ? `Follow ${Fx.name}` : `Talk to ${Fx.name}`;
     h += `<div class="row${Fx.alive ? '' : ' dead'}${view ? ' view' : ''}"${GS.auto || Fx.alive ? ` data-f="${Fx.id}" title="${tip}"` : ''}><i class="sw" style="background:${Fx.css}"></i><span class="nm">${Fx.name}${!GS.auto && Fx.isPlayer ? ' (you)' : ''}${relMark(Fx)}${Fx.alive && Fx.stretch < 0.995 ? ` <small class="over" title="Overstretched: income at ${Math.round(Fx.stretch * 100)}%">−${Math.round((1 - Fx.stretch) * 100)}%</small>` : ''}</span><b title="Provinces held whole${dis ? `, and ${dis} more disputed` : ''}">${trend}${prov}</b><span title="Men under arms">${fmt(men)}</span>${Fx.alive ? `<i class="vb" title="${prov} of the ${need} provinces that win the war${dis ? `; ${dis} more disputed` : ''}"><i style="width:${Math.min(100, prov / need * 100).toFixed(1)}%;background:${Fx.css}"></i></i>` : ''}</div>`;
   }
   const W = warsList();
-  if (W.length) h += '<div class="wars">' + W.map((w) => `<button class="${w.war ? 'w' : 'p'}" data-wars title="${FACTIONS[w.f].name} and ${FACTIONS[w.g].name}: ${w.war ? `at war for ${clock(w.t)}` : `treaty, ${clock(w.t)} left`}"><i class="sw" style="background:${fcss(w.f)}"></i>${w.war ? GLYPH.swords : GLYPH.dove}<i class="sw" style="background:${fcss(w.g)}"></i><span>${clock(w.t)}</span></button>`).join('') + '</div>';
+  if (W.length) h += '<div class="wars">' + W.map((w) => `<button class="${w.war ? 'w' : 'p'}" data-wars title="${FACTIONS[w.f].name} and ${FACTIONS[w.g].name}: ${w.war ? `at war for ${turnsDone(w.t)}` : `treaty, ${turnsTxt(w.t)} left`}"><i class="sw" style="background:${fcss(w.f)}"></i>${w.war ? GLYPH.swords : GLYPH.dove}<i class="sw" style="background:${fcss(w.g)}"></i><span>${w.war ? Math.floor(w.t / TURN_TIME + 1e-6) : turnsIn(w.t)}</span></button>`).join('') + '</div>';
   if (GS.auto) h += `<div id="goal">Leader: <b style="color:${lead.css}">${lead.name}</b>, ${leadN} of ${need} provinces<div class="gbar"><i style="width:${Math.min(100, leadN / need * 100)}%;background:${lead.css}"></i></div></div>`;
   else {
     const mine = GS.factions[ME].provs, dis = disputedFor(ME);
@@ -82,31 +82,57 @@ export function updateHUD() {
   $('btnOver').classList.toggle('on', !!UI.selOver);
   updateDock();
 }
+// the turn bar: which turn, its season, the playing speeds and the End turn button
+export let turnKey = '';
+export function updateTurnControls() {
+  const play = UI.phase === 'play' && !GS.over, paused = GS.speed === 0, sp = paused ? UI.lastSpeed : GS.speed, n = turnOf(GS.time), canPause = play || GS.auto;
+  const k = [play, paused, sp, n, GS.auto, !!GS.over].join('|');
+  if (k === turnKey) return;
+  turnKey = k;
+  $('turnNo').textContent = `Turn ${n}`;
+  $('turnDate').textContent = dateOf(GS.time);
+  $('turnInfo').title = play ? `Turn ${n} is playing out` : GS.auto ? `Turn ${n}` : `Turn ${n}: the world waits for your orders`;
+  document.querySelectorAll('#speed [data-sp]').forEach((b) => { const v = +b.dataset.sp; b.classList.toggle('on', v ? v === sp : paused && canPause); });
+  $('spPause').disabled = !canPause;
+  $('spPause').title = canPause ? (paused ? 'Resume (Space)' : 'Pause the turn as it plays (Space)') : 'Between turns the world already waits for you';
+  $('endTurnTxt').textContent = play ? 'Skip' : GS.auto ? 'Next turn' : 'End turn';
+  $('endTurn').title = play ? 'Play the rest of the turn at once (Enter)' : GS.auto ? 'Play the next turn now (Enter)' : 'Your orders are given: play the turn (Enter)';
+  $('endTurn').classList.toggle('go', !play && !GS.auto && !GS.over);
+  $('endTurn').disabled = !!GS.over;
+  document.body.classList.toggle('turn-play', play);
+}
 // phones held upright (narrow) or sideways (short): the compact layout with the bottom dock
 export const phoneLayout = () => window.innerWidth <= 820 || window.innerHeight <= 500;
 /* ---------- the dock: the phone's commands, at the bottom of the screen ---------- */
 export const ICO_PAUSE = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
 export const ICO_PLAY = '<path d="M7 5l12 7-12 7z"/>';
+export const ICO_END = '<path d="M4 5l10 7-10 7zM15.5 5h3.5v14h-3.5z"/>';
+export const ICO_SKIP = '<path d="M2 5l8 7-8 7zM10 5l8 7-8 7zM18.5 5H21v14h-2.5z"/>';
 export const SPEEDS = [1, 2, 4, 8];
 export let dockKey = '';
 export function updateDock() {
-  const paused = GS.speed === 0, sp = paused ? UI.lastSpeed : GS.speed, idle = GS.auto ? 0 : idleArmies();
-  const s = Math.floor(GS.time);
-  const k = [paused, sp, idle, s, GS.auto, !!UI.selOver, VIEW.political, DIR.on].join('|');
+  const play = UI.phase === 'play' && !GS.over, paused = GS.speed === 0, sp = paused ? UI.lastSpeed : GS.speed, idle = GS.auto ? 0 : idleArmies(), n = turnOf(GS.time);
+  const k = [play, paused, sp, idle, n, GS.auto, !!UI.selOver, VIEW.political, DIR.on].join('|');
   if (k === dockKey) return;
   dockKey = k;
-  $('dkPauseIco').innerHTML = paused ? ICO_PLAY : ICO_PAUSE;
-  $('dkPause').querySelector('span').textContent = paused ? 'Play' : 'Pause';
-  $('dkPause').classList.toggle('on', paused);
-  $('dkPause').setAttribute('aria-label', paused ? 'Resume the game' : 'Pause the game');
+  // while a turn plays, pausing takes the place of the armies (their orders wait anyway); autoplay pauses with the turn button
+  $('dkPlay').classList.toggle('hidden', !!GS.auto || !play);
+  $('dkPlayIco').innerHTML = paused ? ICO_PLAY : ICO_PAUSE;
+  $('dkPlay').querySelector('span').textContent = paused ? 'Play' : 'Pause';
+  $('dkPlay').classList.toggle('on', paused);
+  $('dkPlay').setAttribute('aria-label', paused ? 'Resume the turn' : 'Pause the turn');
+  const T = GS.auto ? (paused ? ['Play', ICO_PLAY, 'Resume the turns'] : ['Pause', ICO_PAUSE, 'Pause the turns']) : play ? ['Skip', ICO_SKIP, 'Play the rest of the turn at once'] : ['End turn', ICO_END, 'Your orders are given: play the turn'];
+  $('dkTurnTxt').textContent = T[0]; $('dkTurnIco').innerHTML = T[1]; $('dkTurn').setAttribute('aria-label', T[2]);
+  $('dkTurn').classList.toggle('go', !GS.auto && !play && !GS.over);
+  $('dkTurn').classList.toggle('on', !!GS.auto && paused);
   $('dkSpd').textContent = sp + '×';
-  $('dkSpeed').classList.toggle('paused', paused);
-  $('dkSpeed').title = `Speed ${sp}×: tap for ${SPEEDS[(SPEEDS.indexOf(sp) + 1) % SPEEDS.length]}×`;
-  $('dkClock').textContent = clock(s);
+  $('dkSpeed').classList.toggle('paused', paused && (play || !!GS.auto));
+  $('dkSpeed').title = `Turns play at ${sp}×: tap for ${SPEEDS[(SPEEDS.indexOf(sp) + 1) % SPEEDS.length]}×`;
+  $('dkClock').textContent = `Turn ${n}`;
   const b = $('dkIdle'), bt = idle ? String(idle) : '';
   if (b.textContent !== bt) { b.textContent = bt; b.classList.toggle('hidden', !bt); }
   $('dkArmies').title = idle ? `Next army (N): ${idle} waiting for orders` : 'Next army (N)';
-  $('dkArmies').classList.toggle('hidden', !!GS.auto);
+  $('dkArmies').classList.toggle('hidden', !!GS.auto || play);
   $('dkFollow').classList.toggle('hidden', !GS.auto);
   $('dkFollow').classList.toggle('on', DIR.on);
   $('dkOver').classList.toggle('on', !!UI.selOver);
@@ -118,6 +144,7 @@ $('dock').addEventListener('click', (e) => {
     case 'armies': cycleArmy(1); break;
     case 'follow': Sfx.click(); setFollow(!DIR.on); break;
     case 'pause': setSpeed(GS.speed > 0 ? 0 : UI.lastSpeed); break;
+    case 'turn': if (GS.auto) setSpeed(GS.speed > 0 ? 0 : UI.lastSpeed); else turnButton(); break;
     case 'speed': { const cur = GS.speed || UI.lastSpeed; setSpeed(SPEEDS[(SPEEDS.indexOf(cur) + 1) % SPEEDS.length]); break; }
     case 'over': toggleOverview(); break;
     case 'map': Sfx.click(); togglePolitical(); break;
@@ -191,6 +218,7 @@ export function toggleOverview(tab) {
 $('envoy').addEventListener('click', (e) => {
   const b = e.target.closest('[data-env]'); if (!b || !GS.envoy) return;
   const E = GS.envoy;
+  if (ordersWait()) return;   // answered between turns, like every order (the envoys wait until the next turn is over)
   if (b.dataset.env === 'yes' && atWar(PLAYER, E.g)) { makePeace(PLAYER, E.g, TREATY_TIME, E.gold ? E.g : null, E.gold); Sfx.horn(); }
   else { relOf(PLAYER, E.g).nd[PLAYER] = GS.time + 90; log(`${pName()} sends the envoys of ${fname(E.g)} home.`, 'info'); Sfx.click(); }
   endEnvoy(); updateHUD(); renderPanel(true);
@@ -209,7 +237,13 @@ $('btnOver').addEventListener('click', () => toggleOverview());
 $('btnView').addEventListener('click', () => toggleMapView());
 $('crestbar').addEventListener('click', () => { if (!GS.auto) return; UI.viewF = (UI.viewF + 1) % GS.factions.length; Sfx.click(); updateHUD(); });
 $('speed').addEventListener('click', (e) => { const b = e.target.closest('[data-sp]'); if (b) setSpeed(+b.dataset.sp); });
-export function setSpeed(v) { if (GS.over) return; if (v > 0) UI.lastSpeed = v; GS.speed = v; Sfx.click(); updateHUD(); }
+// how fast a turn plays out (×), or 0 to pause it; between the player's turns the world waits anyway
+export function setSpeed(v) {
+  if (GS.over) return;
+  if (v === 0 && !GS.auto && UI.phase !== 'play') { flashHint('The world already waits for your orders: <b>End turn</b> plays the turn.'); return; }
+  if (v > 0) UI.lastSpeed = v;
+  GS.speed = v; Sfx.click(); updateHUD();
+}
 
 export const logItems = [];
 export function log(msg, type, focus) {
@@ -219,6 +253,7 @@ export function log(msg, type, focus) {
   if (focus) el.addEventListener('click', () => focusOn(focus));
   $log.appendChild(el);
   logItems.push({ el, t: performance.now() });
+  noteNews(msg, type, focus);   // and into the report at the turn's end
   const max = phoneLayout() ? 1 : GS.auto ? 4 : 5;
   while (logItems.length > max) logItems.shift().el.remove();
 }
@@ -234,7 +269,11 @@ export let hintFlashT = 0;
 export function flashHint(text) { $hint.innerHTML = text; $hint.classList.remove('hidden'); hintFlashT = performance.now() + 2600; }
 export function defaultHint() {
   if (performance.now() < hintFlashT) return;
-  const t = GS.auto ? (isTouch ? '<b>Autoplay</b> · tap anything to inspect it' : '<b>Autoplay</b> · click anything to inspect it · drag to take the camera · <b>F</b> to follow') : isTouch ? 'Tap your <b>army</b>, then the map: the route shows, tap again to march · Tap a <b>city</b> to recruit or build' : 'Click your <b>army</b>, then right-click where to march or what to attack · Click a <b>city</b> to recruit or build';
+  const playing = UI.phase === 'play' && !GS.over;
+  const t = GS.auto ? (isTouch ? '<b>Autoplay</b> · tap anything to inspect it' : '<b>Autoplay</b> · click anything to inspect it · drag to take the camera · <b>F</b> to follow')
+    : playing ? (isTouch ? 'The turn is playing out · <b>Skip</b> ends it now' : 'The turn is playing out · <b>Space</b> pauses it, <b>Enter</b> skips to its end')
+      : isTouch ? 'Tap your <b>army</b>, then the map: the route shows, tap again to march · Tap a <b>city</b> to recruit or build · Then <b>End turn</b>'
+        : 'Click your <b>army</b>, then right-click where to march or what to attack · Click a <b>city</b> to recruit or build · <b>Enter</b> ends the turn';
   if ($hint.innerHTML !== t) $hint.innerHTML = t;
 }
 
@@ -266,7 +305,7 @@ export function onEnvoy(E) {
   const el = $('envoy');
   if (!E) { el.classList.add('hidden'); return; }
   const G = GS.factions[E.g];
-  el.innerHTML = `<i style="background:${G.css}"></i><span><b>${G.name}</b> sends envoys: peace${E.gold ? `, and <b>${E.gold} gold</b> for ${pName()}` : ''}. The treaty would bind for ${mins(TREATY_TIME)} minutes.</span><button class="abtn primary" data-env="yes">Accept</button><button class="abtn" data-env="no">Refuse</button>`;
+  el.innerHTML = `<i style="background:${G.css}"></i><span><b>${G.name}</b> sends envoys: peace${E.gold ? `, and <b>${E.gold} gold</b> for ${pName()}` : ''}. The treaty would bind for ${turnsTxt(TREATY_TIME)}.</span><button class="abtn primary" data-env="yes">Accept</button><button class="abtn" data-env="no">Refuse</button>`;
   el.classList.remove('hidden');
   log(`Envoys from ${fname(E.g)} ask for peace.`, 'info');
   Sfx.horn();

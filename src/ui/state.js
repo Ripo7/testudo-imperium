@@ -7,6 +7,7 @@ import { CAM, pickCell, projectCell } from '../render/camera.js';
 import { updateTerrainColors } from '../render/terrain.js';
 import { fortGeo } from '../render/cities.js';
 import { fortCost, PLAYER } from '../game/data.js';
+import { turnEndOf } from '../game/turns.js';
 import { canOrder, findPath, orderMove, orderTarget, pathTime } from '../game/armies.js';
 import { estimateOdds } from '../game/battles.js';
 import { buildFort, fortSpotOk } from '../game/economy.js';
@@ -23,7 +24,23 @@ export let ME = PLAYER;
 export function setME(v) { ME = v; }
 // the power the human commands; SPECT while autoplay runs everything
 // order: the order a touch has planned for the selected armies, waiting for a second tap (see planOrder)
-export const UI = { viewF: PLAYER, mode: 'title', sel: [], selCity: null, selFort: null, selProv: null, selBattle: null, selEnemy: null, placing: false, hold: false, panelT: 0, hudT: 0, t: 0, lastSpeed: 1, order: null };
+// phase: 'orders' while the world waits for them, 'play' while a turn plays out (ui/turnflow.js); sliceEnd: when it stops
+export const SPEED0 = 4;   // how fast a turn plays at first (×), until the player picks another speed
+export const UI = { viewF: PLAYER, mode: 'title', sel: [], selCity: null, selFort: null, selProv: null, selBattle: null, selEnemy: null, placing: false, hold: false, panelT: 0, hudT: 0, t: 0, lastSpeed: SPEED0, order: null,
+  phase: 'orders', sliceEnd: 0, autoAt: 0, news: [] };
+// the world is moving: a turn is playing out, not paused, the war not over
+export const worldRuns = () => UI.mode === 'play' && UI.phase === 'play' && GS.speed > 0 && !GS.over;
+// orders can be given: between turns
+export const ordersOpen = () => UI.phase !== 'play' || !!GS.over;
+// an order tried while the turn plays out is refused, with a word why (true: refused)
+export function ordersWait() {
+  if (ordersOpen()) return false;
+  Sfx.deny();
+  flashHint('The turn is playing out: orders wait for the next one (<b>Skip</b> ends it now).');
+  return true;
+}
+// seconds of game time left in the turn: all of it between turns
+export const turnLeft = () => Math.max(0, (UI.phase === 'play' ? UI.sliceEnd : turnEndOf(GS.time)) - GS.time);
 export const $panel = $('panel'), $tip = $('tip'), $log = $('log'), $hint = $('hintbar');
 
 export function clearSel(keepProv) {
@@ -120,7 +137,7 @@ export function stationSpot(c, k) {
 }
 export function issueOrder(h, cell) {
   const arms = myOrderables();
-  if (!arms.length) return false;
+  if (!arms.length || ordersWait()) return false;
   let any = false, hostile = false;
   arms.forEach((a, k) => {
     if (h && h.kind === 'army' && h.ref !== a) {
@@ -163,7 +180,7 @@ export const SAME_SPOT = 34;   // px: a second tap this close to the standard co
 export let orderSeq = 0;
 export function planOrder(h, cell) {
   const arms = myOrderables();
-  if (!arms.length || (!h && !cell)) return;
+  if (!arms.length || (!h && !cell) || ordersWait()) return;
   const tgt = h && h.kind !== 'prov' ? h : null;
   const x = tgt ? tgt.ref.x : cell.x, y = tgt ? tgt.ref.y : cell.y;
   // the route of the army farthest from it: the march time is when the last one gets there
@@ -218,13 +235,15 @@ export function longPressAt(sx, sy) {
 /* ---------- fort placement ---------- */
 export function startPlacing() {
   const F = GS.factions[ME];
+  if (ordersWait()) return;
   if (!canAfford(F, fortCost(ME))) { flashHint('Not enough resources for a fort.'); Sfx.deny(); return; }
+  $('turnrep').classList.add('hidden'); document.body.classList.remove('has-turnrep');   // the placing bar takes its spot
   UI.placing = true; $('placebar').classList.remove('hidden'); cancelOrder();
   ghost.geometry = fortGeo();
 }
 export function stopPlacing() { UI.placing = false; ghost.visible = false; $('placebar').classList.add('hidden'); }
 export function placeFortAt(cell) {
-  if (!cell) return;
+  if (!cell || ordersWait()) return;
   const F = GS.factions[ME];
   const f = buildFort(F, cell.x, cell.y);
   if (f) { Sfx.thunk(); log('Construction of a fort has begun.', 'info', f); stopPlacing(); UI.selFort = f; UI.selCity = null; renderPanel(true); }

@@ -11,6 +11,7 @@ import { FIGHTERS, fighterName, POWERS } from './lab/battle.js';
 import { economyLab } from './lab/economy.js';
 import { battleLab, scoreBattles, scoreEconomy, scoreWars, total, warSummary } from './lab/score.js';
 import { runJobs, cores } from './lab/pool.js';
+import { TURN_TIME } from '../src/game/data.js';
 
 export const SEED0 = 1000, SEED_STEP = 7919;   // war k is played on seed SEED0 + k * SEED_STEP
 export const seeds = (n, from = 0) => Array.from({ length: n }, (_, k) => SEED0 + (from + k) * SEED_STEP);
@@ -36,7 +37,8 @@ export function printEconomy(E) {
 export function printWars(S) {
   console.log(`\nWar lab · ${S.n} AI wars, fog of war on`);
   console.log('wins      ' + POWERS.map((p, f) => `${p} ${S.wins[f]} (${pct(S.share[f])}, ${pct(S.ci[f][0])}–${pct(S.ci[f][1])})`).join(' · '));
-  console.log(`length    median ${S.median.toFixed(1)} min · p10 ${S.p10.toFixed(1)} · p90 ${S.p90.toFixed(1)} · at the time limit ${pct(S.unfinished)}`);
+  const turns = (m) => Math.round(m * 60 / TURN_TIME);
+  console.log(`length    median ${S.median.toFixed(1)} min (${turns(S.median)} turns) · p10 ${S.p10.toFixed(1)} · p90 ${S.p90.toFixed(1)} · at the time limit ${pct(S.unfinished)}`);
   console.log(`per war   forts ${S.forts.toFixed(1)} · retreats ${S.retreats.toFixed(1)} · revolts ${S.revolts.toFixed(1)} · wars ${S.wars.toFixed(1)} · peace treaties ${S.peaces.toFixed(1)}`);
   POWERS.forEach((p, f) => {
     const c = S.raised[f], men = c.spear + c.leg + c.arch + c.cav;

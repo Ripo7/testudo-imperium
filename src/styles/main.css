@@ -36,7 +36,7 @@ button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 b { font-weight: 800; }
 
 /* the tablet: wax surface in a walnut frame */
-.bar, #stand, #panel, #placebar, #envoy, #overbar, #hintbar, #tip, #alerts, .tablet {
+.bar, #stand, #panel, #placebar, #envoy, #overbar, #hintbar, #tip, #alerts, #turnrep, .tablet {
   border: 3px solid transparent; border-radius: 8px;
   background: var(--waxbg) padding-box, var(--frame) border-box;
   box-shadow: inset 0 0 0 1px rgba(255, 214, 150, .07), inset 0 2px 6px rgba(0, 0, 0, .35), 0 0 0 1px var(--walnut-d), 0 8px 22px rgba(0, 0, 0, .42);
@@ -87,7 +87,39 @@ body.auto #crestbar { cursor: pointer; }
 #speed button:hover { background: rgba(226, 189, 98, .1); }
 #speed button.on { background: linear-gradient(#f3d27c, #c48f33); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 0 0 1px #6b4a16; }
 #speed button.on svg { fill: var(--ink); }
-#clock { font-size: 12px; font-weight: 700; color: var(--bone2); padding: 0 6px 0 8px; font-variant-numeric: tabular-nums lining-nums; }
+#speed button:disabled { opacity: .35; cursor: default; background: none; }
+/* the turn: its number and season, a thin bar filling while it plays, and the End turn button */
+#turnInfo { display: grid; grid-template-columns: auto; padding: 0 10px 0 6px; min-width: 108px; line-height: 1.1; position: relative; }
+#turnNo { font: 400 16px/1.1 var(--font-display); letter-spacing: .03em; color: var(--gold-hi); font-variant-numeric: lining-nums; }
+#turnDate { font-size: 11px; font-weight: 700; color: var(--bone2); white-space: nowrap; }
+.tprog { position: absolute; left: 6px; right: 10px; bottom: -3px; height: 2px; border-radius: 1px; background: rgba(226, 189, 98, .12); overflow: hidden; }
+.tprog i { display: block; height: 100%; width: 0; background: var(--gold); }
+#speed .endturn { width: auto; min-width: 116px; justify-content: center; height: 30px; margin-left: 6px; padding: 0 11px 0 13px; display: inline-flex; gap: 7px; white-space: nowrap; font: 400 15px var(--font-display); letter-spacing: .03em; color: var(--bone); box-shadow: inset 0 0 0 1px var(--line); }
+#speed .endturn svg { width: 15px; height: 15px; }
+#speed .endturn.go { background: linear-gradient(#f5d985, #c8923a); color: var(--ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 0 0 1px #6b4a16, 0 2px 0 #6b4a16; }
+#speed .endturn.go svg { fill: var(--ink); }
+#speed .endturn:disabled { opacity: .4; cursor: default; }
+/* while a turn plays out, the buttons that give orders wait for the next one */
+body.turn-play #panel :is([data-act^="recruit"], [data-act="walls"], [data-act^="peace"], [data-act^="treaty"], [data-act^="war:"], [data-act^="imp:"], [data-act="retreat"], [data-act^="buy:"], [data-act^="sell:"], [data-act="fort"], [data-act^="stance"], [data-act="split"], [data-act="mergeall"], [data-act="stop"], [data-act="confirm"], [data-act="attack"]),
+body.turn-play #envoy .abtn { opacity: .45; filter: saturate(.35); }
+/* where a march stands at the end of this turn (1), the next (2)... */
+.lb.pip { width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center; background: rgba(33, 22, 14, .92); box-shadow: 0 0 0 1.5px var(--gold-hi), 0 2px 5px rgba(0, 0, 0, .45); font: 800 10px/1 var(--font-ui); color: var(--bone); pointer-events: auto; cursor: default; }
+.lb.pip.now { background: var(--gold-hi); color: var(--ink); }
+.lb.pip.foe { box-shadow: 0 0 0 1.5px #ff8a76, 0 2px 5px rgba(0, 0, 0, .45); }
+.lb.pip.foe.now { background: #ffb3a6; }
+/* the report when a turn is over */
+#turnrep { position: absolute; z-index: 5; left: 50%; top: calc(var(--sat) + 68px); transform: translateX(-50%); width: min(440px, 94vw); padding: 9px 10px 9px 12px; pointer-events: auto; display: flex; flex-direction: column; gap: 7px; }
+#turnrep .trh { display: flex; align-items: baseline; gap: 10px; padding-right: 30px; position: relative; }
+#turnrep .trh b { font: 400 17px var(--font-display); letter-spacing: .03em; color: var(--gold-hi); }
+#turnrep .trh small { font-size: 12px; font-weight: 700; color: var(--bone2); }
+#turnrep .x { position: absolute; right: -4px; top: -4px; width: 30px; height: 28px; border-radius: 5px; color: var(--bone2); font-size: 15px; }
+#turnrep .x:hover { color: var(--bone); box-shadow: inset 0 0 0 1px var(--gold); }
+#turnrep .trl { display: flex; flex-direction: column; gap: 4px; max-height: min(320px, 46vh); overflow-y: auto; }
+#turnrep .ev { box-shadow: none; background: rgba(255, 230, 180, .045); cursor: default; animation: none; padding: 5px 9px; font-size: 12.5px; }
+#turnrep .ev.go { cursor: pointer; } #turnrep .ev.go:hover { background: rgba(255, 230, 180, .1); }
+#turnrep .quiet, #turnrep .more { font-size: 12.5px; color: var(--bone2); }
+#turnrep .trf { padding-top: 7px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--bone2); }
+#turnrep .trf b { color: var(--gold); }
 .ibtn { width: 34px; height: 32px; border-radius: 5px; display: grid; place-items: center; }
 .ibtn:hover { background: rgba(226, 189, 98, .1); }
 .ibtn svg { width: 18px; height: 18px; fill: var(--bone); }
@@ -501,6 +533,14 @@ svg.ch { display: block; max-width: 100%; height: auto; overflow: visible; touch
   #dkSpd { font: 800 18px/22px var(--font-ui); color: var(--gold-hi); font-variant-numeric: lining-nums; }
   #dkSpeed.paused #dkSpd { opacity: .4; }
   #dkClock { font-variant-numeric: tabular-nums lining-nums; }
+  #dock .endturn.go { background: linear-gradient(#f3d27c, #c48f33); color: var(--ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 0 0 1px #6b4a16; }
+  #dock .endturn.go svg { fill: var(--ink); }
+  #dkProg { position: absolute; left: 0; top: -3px; height: 3px; width: 0; background: var(--gold); pointer-events: none; }
+  /* the report leaves the race rail on the right in view */
+  #turnrep { top: calc(var(--top-h) + var(--alerts-h, 0px)); left: calc(var(--sal) + 6px); right: calc(var(--sar) + 70px); width: auto; transform: none; padding: 7px 8px 8px 10px; gap: 5px; }
+  #hud.hide-stand #turnrep { right: calc(var(--sar) + 6px); }
+  #turnrep .trl { max-height: 34vh; }
+  body.has-turnrep #log { display: none; }
   #dock .badge { top: 2px; right: auto; left: calc(50% + 6px); }
   #dkIdle { background: var(--gold); color: var(--ink); }
   /* the race rail: each power's provinces and its bar towards victory */

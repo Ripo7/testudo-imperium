@@ -12,7 +12,6 @@ import { fillStats } from './chronicle.js';
    Where it is kept (this browser) and what the screen adds (camera, speed) is up to ui/persist.js.
    ========================================================= */
 export const MOVE_RULES = 2;   // 2: roads, bridges and fords
-export const clockStr = (t) => { const s = Math.floor(t); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 export function mapPrint() { return [MAP.W, MAP.H, MAP.provinces.length, MAP.cities.length, MAP.landCount].join('x'); }
 export function snapshot() {
   const refOf = (T) => {
@@ -24,7 +23,7 @@ export function snapshot() {
     v: 1, mv: MOVE_RULES, mg: MAP.gen, seed: MAP.seed, print: mapPrint(), at: Date.now(),
     gs: {
       time: GS.time, auto: GS.auto, player: PLAYER, rel: GS.rel, diff: GS.diff, fog: !!GS.fog, nextId: GS.nextId, stats: GS.stats, fstats: GS.fstats, checkT: GS.checkT, chron: GS.chron, hist: GS.hist, rng: GS.rng, peaceT: GS.peaceT || 0, sightT: GS.sightT || 0,
-      envoy: GS.envoy || null,
+      envoy: GS.envoy || null, planAt: GS.planAt || 0,
     },
     factions: GS.factions.map((F) => ({ res: F.res, inc: F.inc, upk: F.upk, net: F.net, alive: F.alive, starving: F.starving, unpaid: F.unpaid, aiT: F.aiT, eliminatedAt: F.eliminatedAt, provoked: F.provoked, oath: F.oath, noDealT: F.noDealT, intel: F.intel || {},
       dipT: F.dipT, saveFor: F.saveFor, saveUntil: F.saveUntil, saveCool: F.saveCool })),
@@ -46,7 +45,8 @@ export function restoreSnapshot(S) {
   initCampaign(S.seed, S.mg || 1);   // saves from before the generator had versions: its first version
   if (mapPrint() !== S.print || S.cities.length !== MAP.cities.length) throw new Error('This save belongs to a different map.');
   const g = S.gs;
-  Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, fog: !!g.fog, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: fillStats(g.fstats), chron: g.chron || [], hist: g.hist || [], checkT: g.checkT || 1, peaceT: g.peaceT || 0, envoy: g.envoy || null, armies: [], forts: [], battles: [], over: null });
+  Object.assign(GS, { time: g.time, rel: g.rel || oldRelations(g), diff: g.diff == null ? 1 : g.diff, fog: !!g.fog, auto: !!g.auto, nextId: g.nextId, stats: g.stats, fstats: fillStats(g.fstats), chron: g.chron || [], hist: g.hist || [], checkT: g.checkT || 1, peaceT: g.peaceT || 0, envoy: g.envoy || null, armies: [], forts: [], battles: [], over: null,
+    planAt: g.planAt != null ? g.planAt : g.time });   // a save from before turns: the AI plans at once
   setPlayer(g.player || 0);   // saves from before any power was playable: Rome
   S.factions.forEach((d, i) => Object.assign(GS.factions[i], d));
   for (const F of GS.factions) F.isPlayer = false;

@@ -1,12 +1,12 @@
 import { holdsIn, placesOf, SET_W, STAND } from './standing.js';
 import { GS, MAP, menOf, rnd } from './state.js';
 import {
-  DIPLO, ECON, FACTIONS, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PLAYER, pName, RIVALRY, TREATY_TIME,
+  DIPLO, ECON, FACTIONS, hasImp, NEUTRAL, OATH_TIME, PACT_TIME, PEACE_TIME, PLAYER, pName, RIVALRY, TREATY_TIME, TURN_TIME,
 } from './data.js';
 import { captureCity, powerOf, roundComp } from './battles.js';
 import { HOOKS } from './hooks.js';
 import { BALANCE } from './balance.js';
-import { clockStr } from './save.js';
+import { turnEndOf, turnsTxt } from './turns.js';
 import { recordPeace, recordWar } from './chronicle.js';
 
 // Diplomacy: every pair of powers is either at war or at peace. A peace treaty binds both sides for a while;
@@ -38,7 +38,6 @@ export function claimsAgainst(f, g) {
   return n;
 }
 export const lastTwo = () => GS.factions.filter((X) => X.alive).length === 2;
-export const mins = (sec) => (sec % 60 === 30 ? Math.floor(sec / 60) + '½' : String(Math.round(sec / 60)));
 export function declareWar(f, g) {
   const R = relOf(f, g);
   if (R.war) return;
@@ -104,7 +103,7 @@ export function suePeace(g) {
   if (!a.ok) return { ok: false, msg: a.why };
   if (a.gold > P.res.gold) return { ok: false, msg: `${a.why} It asks <b>${a.gold} gold</b>, more than the treasury holds.` };
   makePeace(PLAYER, g, TREATY_TIME, a.gold ? PLAYER : null, a.gold);
-  return { ok: true, msg: `Peace with ${FACTIONS[g].name}${a.gold ? ` for ${a.gold} gold` : ''}. The treaty binds both sides for ${mins(TREATY_TIME)} minutes.` };
+  return { ok: true, msg: `Peace with ${FACTIONS[g].name}${a.gold ? ` for ${a.gold} gold` : ''}. The treaty binds both sides for ${turnsTxt(TREATY_TIME)}.` };
 }
 // at peace: will g renew the treaty with the player?
 export function treatyAnswer(g) {
@@ -121,7 +120,7 @@ export function renewTreaty(g) {
   const a = treatyAnswer(g), R = relOf(PLAYER, g);
   if (!a.ok) { R.nd[g] = GS.time + 45; return { ok: false, msg: a.why }; }
   R.lock = Math.max(R.lock, GS.time) + PACT_TIME;
-  return { ok: true, msg: `${FACTIONS[g].name} renews the treaty: it now binds for ${clockStr(R.lock - GS.time)}.` };
+  return { ok: true, msg: `${FACTIONS[g].name} renews the treaty: it now binds for ${turnsTxt(R.lock - GS.time)}.` };
 }
 // an AI power looks for a war worth fighting
 export function aiConsiderWar(F) {
@@ -199,6 +198,7 @@ export function revolts() {
     if (rnd() < revoltRisk(c, F)) { captureCity(c, NEUTRAL); c.militia = c.militiaMax * 0.6; c.loyal = 1; }
   }
 }
-// envoys of g offer the player peace (gold: what g pays for it) for 40 seconds
-export function sendEnvoy(g, gold) { GS.envoy = { g, gold, until: GS.time + 40 }; HOOKS.envoy(GS.envoy); }
+// envoys of g offer the player peace (gold: what g pays for it) until the end of the next turn, so the player has a
+// turn's orders to answer them
+export function sendEnvoy(g, gold) { GS.envoy = { g, gold, until: turnEndOf(GS.time) + TURN_TIME }; HOOKS.envoy(GS.envoy); }
 export function endEnvoy() { GS.envoy = null; HOOKS.envoy(null); }

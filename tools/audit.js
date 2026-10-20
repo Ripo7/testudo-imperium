@@ -34,6 +34,8 @@ const PROBES = [
   ['export function sendEnvoy(g, gold) {', A("'envoy'")],
   ['export function recordProvince(P, prev) {', A("'province'", "P.owner >= 0 ? 'won' : P.owner === -2 ? 'disputed' : 'free'")],
   ['        orderTarget(a, bestKind, best);', A("'aiAttack'", 'bestKind')],
+  ['(0.5 - 0.15 * GS.factions[a.owner].aggr)) continue;\n      retreatArmy(a);', A("'fallBack'")],
+  ['.p < 0.6) return;\n  orderTarget(a, next.kind, next.ref);', A("'pressOn'", 'next.kind')],
 ];
 const applied = PROBES.map(() => 0);
 const probePlugin = {

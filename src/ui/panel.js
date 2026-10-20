@@ -1,27 +1,29 @@
 import { groundInfo, mergeArmies, nearestCity, orderTarget, pathTime, splitArmy } from '../game/armies.js';
 import { seesArmy, seesBattle, seesCity } from './view.js';
-import { atWar, declareWar, mins, peaceAnswer, relOf, renewTreaty, suePeace, treatyAnswer, wearyWord } from '../game/diplomacy.js';
+import { atWar, declareWar, peaceAnswer, relOf, renewTreaty, suePeace, treatyAnswer, wearyWord } from '../game/diplomacy.js';
+import { turnsDone, turnsTxt } from '../game/turns.js';
 import { DISPUTED, holdsIn, placesOf, provSecure, provW, SET_W } from '../game/standing.js';
 import { canAfford, dist, emptyComp, GS, MAP, menOf, ownerName, provAt, starsOf } from '../game/state.js';
 import { isTouch } from '../core/util.js';
 import { Sfx } from '../core/audio.js';
 import { BIOME } from '../map/generate.js';
 import {
-  BUILD, COMBAT, ECON, FACTIONS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, pName, RES, sgnPct, sigOf, TYPES5, U, unitCost, UNITS, wallCost,
+  BUILD, buildTime, COMBAT, ECON, FACTIONS, fortCost, hasImp, IMP_IDS, impCost, IMPS, impSlots, MARKET, OATH_TIME, PACT_TIME, pAdj, PEACE_TIME, perkOf, PLAYER, pName, RES, sgnPct, sigOf, TYPES5, U, unitCost, UNITS, wallCost, wallTime,
 } from '../game/data.js';
 import { canRetreat, estimateOdds, modsList, retreatArmy, retreatLoss, sideFought, sideMen } from '../game/battles.js';
 import { armyPay, buildImp, cityYield, fortify, landShare, marketOf, plunderer, recruit, trade } from '../game/economy.js';
-import { costHtml, costMini, etaShort, fcss, fmt, fmtInt, IC, icOf } from './format.js';
+import { costHtml, costMini, etaTurns, fcss, fmt, fmtInt, IC, icOf, perTurn } from './format.js';
 import {
-  $hint, $panel, cancelOrder, clearSel, confirmOrder, cycleArmy, issueOrder, ME, myArmies, myOrderables, oddsHtml, selectAllArmies,
-  selectThing, startPlacing, UI,
+  $hint, $panel, cancelOrder, clearSel, confirmOrder, cycleArmy, issueOrder, ME, myArmies, myOrderables, oddsHtml, ordersWait, selectAllArmies,
+  selectThing, startPlacing, turnLeft, UI,
 } from './state.js';
 import { flashHint, focusOn, goTo, log, phoneLayout, updateHUD } from './hud.js';
 import { overviewPanel } from './overview.js';
 import { updateTerrainColors } from '../render/terrain.js';
-import { clockStr } from '../game/save.js';
 import { DIR, setFollow } from './director.js';
 
+// the panel's buttons that give orders (refused while a turn plays out)
+export const ORDER_ACTS = ['recruit', 'walls', 'peace', 'treaty', 'war', 'imp', 'retreat', 'buy', 'sell', 'fort', 'stance', 'split', 'mergeall', 'stop', 'confirm', 'attack'];
 export const releaseHold = () => setTimeout(() => { UI.hold = false; }, 150);
 export function doAct(act) {
   const F = GS.factions[ME];
@@ -29,6 +31,7 @@ export function doAct(act) {
   const c = UI.selCity;
   if (cmd === 'goto') { goTo(act.slice(5)); return; }
   if (GS.auto && !['close', 'focus', 'follow', 'view', 'over', 'chf', 'watch', 'selcity', 'dip'].includes(cmd)) return;
+  if (ORDER_ACTS.includes(cmd) && ordersWait()) return;   // orders are given between turns
   switch (cmd) {
     case 'follow': { const t = UI.selEnemy; if (t) { setFollow(true); DIR.tgt = { kind: 'army', ref: t }; DIR.hold = 1e9; } break; }
     case 'view': UI.viewF = +arg; updateHUD(); break;
@@ -72,14 +75,14 @@ export function doAct(act) {
 export function headerHtml(color, title, sub, tools, close) {
   return `<div class="ph${tools ? ' has-tools' : ''}" style="--fc:${color}"><button class="grip" data-sheet aria-label="Show more or less"></button><h2>${title}</h2><div class="sub">${sub}</div>${tools ? `<span class="ph-tools">${tools}</span>` : ''}<button class="x" data-act="${close || 'close'}" aria-label="${close === 'unplan' ? 'Cancel the order' : 'Close'}">✕</button></div>`;
 }
-export function yieldChips(y) { return RES.filter((r) => y[r] > 0.05).map((r) => `<span class="chip">${IC[r]}<b>+${y[r].toFixed(1)}</b>/s</span>`).join(''); }
+export function yieldChips(y) { return RES.filter((r) => y[r] > 0.05).map((r) => `<span class="chip">${IC[r]}<b>+${fmt(perTurn(y[r]))}</b> a turn</span>`).join(''); }
 export function wallsDots(n) { return '▮'.repeat(n) + '<span style="opacity:.3">' + '▮'.repeat(3 - n) + '</span>'; }
 
 export function dipPanel(g) {
   const G = GS.factions[g], P = GS.factions[PLAYER], R = relOf(PLAYER, g);
   const men = (f) => GS.armies.reduce((m, a) => m + (!a.dead && a.owner === f ? menOf(a.comp) : 0), 0);
   const war = atWar(PLAYER, g), lockL = R.lock - GS.time;
-  const status = !G.alive ? 'Wiped out' : war ? `At war with ${pName()} for ${clockStr(GS.time - R.since)}` : lockL > 0 ? (R.lock === PEACE_TIME ? 'Opening truce' : 'Peace treaty') : 'At peace, no treaty';
+  const status = !G.alive ? 'Wiped out' : war ? `At war with ${pName()} for ${turnsDone(GS.time - R.since)}` : lockL > 0 ? (R.lock === PEACE_TIME ? 'Opening truce' : 'Peace treaty') : 'At peace, no treaty';
   let h = headerHtml(G.css, G.name, status) + '<div class="pb">';
   h += `<div class="kv"><span class="chip">${IC.men}men <b>${fmtInt(men(g))}</b> vs ${fmtInt(men(PLAYER))}</span><span class="chip">provinces <b>${G.provs}</b> vs ${P.provs}</span></div>`;
   const others = GS.factions.filter((X) => X.alive && X.id !== g && X.id !== PLAYER && atWar(g, X.id)).map((X) => X.name);
@@ -92,9 +95,9 @@ export function dipPanel(g) {
     h += `<button class="abtn${a.ok && a.gold <= P.res.gold ? ' primary' : ' off'}" data-act="peace:${g}" style="justify-content:center">${lbl}</button>`;
     if (!a.ok) h += `<div class="note">${a.why}</div>`;
   } else {
-    if (lockL > 0) h += `<div class="note">The ${R.lock === PEACE_TIME ? 'truce' : 'treaty'} binds for <b>${clockStr(lockL)}</b>. Declaring war before then makes ${pName()} an oath-breaker: no power will deal with you for ${mins(OATH_TIME)} minutes.</div>`;
+    if (lockL > 0) h += `<div class="note">The ${R.lock === PEACE_TIME ? 'truce' : 'treaty'} binds for <b>${turnsTxt(lockL)}</b> more. Declaring war before then makes ${pName()} an oath-breaker: no power will deal with you for ${turnsTxt(OATH_TIME)}.</div>`;
     const t = treatyAnswer(g);
-    h += `<div class="row2"><button class="abtn${t.ok ? '' : ' off'}" data-act="treaty:${g}" style="justify-content:center">🤝 Renew treaty +${mins(PACT_TIME)} min</button><button class="abtn danger" data-act="war:${g}" style="justify-content:center">⚔ Declare war</button></div>`;
+    h += `<div class="row2"><button class="abtn${t.ok ? '' : ' off'}" data-act="treaty:${g}" style="justify-content:center">🤝 Renew treaty +${turnsTxt(PACT_TIME)}</button><button class="abtn danger" data-act="war:${g}" style="justify-content:center">⚔ Declare war</button></div>`;
     if (!t.ok) h += `<div class="note">${t.why}</div>`;
   }
   if (UI.dipMsg) h += `<div class="note">${UI.dipMsg}</div>`;
@@ -105,7 +108,7 @@ export function onImpDone(c, id) { if (c.owner === ME && !GS.auto) { log(`<b>${I
 export function impHtml(c, F) {
   let h = `<div class="sect">Improvements · ${c.imps.length + (c.impBuild ? 1 : 0)}/${impSlots(c)} slots</div>`;
   if (c.imps.length) h += '<div class="kv">' + c.imps.map((id) => `<span class="chip" title="${IMPS[id].desc}">${IMPS[id].ico} <b>${IMPS[id].name}</b></span>`).join('') + '</div>';
-  if (c.impBuild) h += `<div class="note">Building ${IMPS[c.impBuild.id].ico} ${IMPS[c.impBuild.id].name}…</div><div class="prog"><i style="width:${Math.round(c.impBuild.t * 100)}%"></i></div>`;
+  if (c.impBuild) h += `<div class="note">Building ${IMPS[c.impBuild.id].ico} ${IMPS[c.impBuild.id].name}, ${readyIn((1 - c.impBuild.t) * IMPS[c.impBuild.id].time * buildTime(c.owner))}</div><div class="prog"><i style="width:${Math.round(c.impBuild.t * 100)}%"></i></div>`;
   else if (c.imps.length < impSlots(c)) {
     for (const id of IMP_IDS) {
       if (hasImp(c, id)) continue;
@@ -150,7 +153,7 @@ export function cityPanel(c) {
       h += '<div class="queue">' + c.queue.map((q, i) => `<div class="qi" title="${U(q.type, c.owner).name}"><i style="height:${i === 0 ? Math.round(q.t * 100) : 0}%"></i>${icOf(q.type, c.owner)}</div>`).join('') + '</div>';
     }
     h += info;
-    if (c.wallBuild) h += `<div class="note">Raising walls to level ${c.wallBuild.level}…</div><div class="prog"><i style="width:${Math.round(c.wallBuild.t * 100)}%"></i></div>`;
+    if (c.wallBuild) h += `<div class="note">Raising walls to level ${c.wallBuild.level}, ${readyIn((1 - c.wallBuild.t) * wallTime(c.wallBuild.level) * buildTime(c.owner))}</div><div class="prog"><i style="width:${Math.round(c.wallBuild.t * 100)}%"></i></div>`;
     if (!c.wallBuild && c.walls < 3) {
       const cost = wallCost(ME, c.walls + 1);
       h += `<button class="abtn${canAfford(F, cost) ? '' : ' off'}" data-act="walls"><span>${IC.walls.replace('<svg', '<svg width="18" height="18"')} Raise walls to level ${c.walls + 1}</span><small>${costHtml(F, cost)}</small></button>`;
@@ -168,7 +171,7 @@ export function cityPanel(c) {
     if (c.owner >= 0) {
       h += `<div class="sect">${FACTIONS[c.owner].name} is building</div>`;
       if (c.queue.length) h += '<div class="queue">' + c.queue.map((q, i) => `<div class="qi" title="${U(q.type, c.owner).name}"><i style="height:${i === 0 ? Math.round(q.t * 100) : 0}%"></i>${icOf(q.type, c.owner)}</div>`).join('') + '</div>';
-      if (c.wallBuild) h += `<div class="note">Raising walls to level ${c.wallBuild.level}…</div><div class="prog"><i style="width:${Math.round(c.wallBuild.t * 100)}%"></i></div>`;
+      if (c.wallBuild) h += `<div class="note">Raising walls to level ${c.wallBuild.level}, ${readyIn((1 - c.wallBuild.t) * wallTime(c.wallBuild.level) * buildTime(c.owner))}</div><div class="prog"><i style="width:${Math.round(c.wallBuild.t * 100)}%"></i></div>`;
       if (!c.queue.length && !c.wallBuild) h += '<div class="note">Nothing right now.</div>';
       const here = GS.armies.filter((a) => !a.dead && a.owner === c.owner && dist(a, c) < 3);
       if (here.length) h += `<div class="note">Garrison: <b>${fmtInt(here.reduce((m, a) => m + menOf(a.comp), 0))}</b> men camped by the walls.</div>`;
@@ -206,8 +209,10 @@ export function armyStatus(a) {
   const p = provAt(a.x, a.y);
   return p >= 0 ? `Camped in ${MAP.provinces[p].name}` : 'Camped';
 }
-// a march time in words: "about 25 s", "about 1:40"
-export const etaWords = (t) => `about ${etaShort(t)}`;
+// work under way, in turns: "ready this turn", "ready in 2 turns"
+export const readyIn = (t) => { const w = etaTurns(t, turnLeft()); return w === 'this turn' ? 'ready this turn' : `ready in ${w}`; };
+// a march in turns, from now: "arrives this turn", "arrives in 3 turns"
+export const etaWords = (t) => { const w = etaTurns(t, turnLeft()); return w === 'this turn' ? 'arrives this turn' : `arrives in ${w}`; };
 export function myArmyPanel(list) {
   const comp = emptyComp(); for (const a of list) for (const t of TYPES5) comp[t] += a.comp[t];
   const men = menOf(comp);
@@ -240,9 +245,9 @@ export function myArmyPanel(list) {
   const allDef = list.every((a) => a.stance === 'def'), allAgg = list.every((a) => a.stance === 'aggr');
   const defName = sigOf(ME).testudo ? 'Testudo' : 'Shield wall';
   h += `<div class="seg"><button class="${allAgg ? 'on' : ''}" data-act="stance:aggr">⚔ Aggressive</button><button class="${allDef ? 'on' : ''}" data-act="stance:def">🛡 ${defName}</button></div>`;
-  h += `<div class="note">${allDef ? (sigOf(ME).testudo ? `Testudo: <b>${sgnPct(COMBAT.defDef)} defense</b>, legionaries take far less from arrows, slower march.` : `Shield wall: <b>${sgnPct(COMBAT.defDef)} defense</b>, slower march.`) : `Aggressive: <b>${sgnPct(COMBAT.aggrAtk)} attack</b>, weaker defense.`}</div>`;
+  h += `<div class="note">${allDef ? (sigOf(ME).testudo ? `Testudo: <b>${sgnPct(COMBAT.defDef)} defense</b>, legionaries take far less from arrows, slower march; holds what it takes.` : `Shield wall: <b>${sgnPct(COMBAT.defDef)} defense</b>, slower march; holds what it takes.`) : `Aggressive: <b>${sgnPct(COMBAT.aggrAtk)} attack</b>, weaker defense; after taking a place, presses on to the next one of the province.`}</div>`;
   const pay = list.reduce((s, a) => s + armyPay(a), 0);
-  h += `<div class="kv"><span class="chip">${IC.food}eats <b>${(upk * (home || forage ? 1 : ECON.abroad)).toFixed(1)}</b>/s${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${pay.toFixed(1)}</b>/s</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
+  h += `<div class="kv"><span class="chip">${IC.food}eats <b>${fmt(perTurn(upk * (home || forage ? 1 : ECON.abroad)))}</b> a turn${home ? '' : forage ? ' (foraging)' : ' (abroad)'}</span><span class="chip">${IC.gold}pay <b>${fmt(perTurn(pay))}</b> a turn</span>${list.length === 1 ? `<span class="chip">victories <b>${a0.wins}</b></span>` : ''}</div>`;
   if (list.length === 1) { const g = groundInfo(a0.x, a0.y); h += `<div class="kv"><span class="chip">${g.name} · <b>${g.pace}</b></span></div>`; }
   h += `<div class="note">${isTouch ? 'Tap the map or a target: the route and the odds show first, tap again to go. Hold another of your armies to add it.' : 'Right-click the map to march; right-click an enemy to attack, a friendly army to merge, your city to garrison. Shift-click adds an army.'}</div>`;
   h += '</div>';
@@ -280,7 +285,7 @@ export function orderPanel(o) {
       + `<div class="row2"><button class="abtn danger go" data-act="confirm">⚔ Attack · ${who}</button><button class="abtn" data-act="inspect">Inspect</button></div>`;
     if (owner >= 0 && !atWar(ME, owner)) {
       const R = relOf(ME, owner);
-      note = `<b>You are at peace with ${FACTIONS[owner].name}:</b> attacking declares war${R.lock > GS.time ? ` and breaks the ${R.lock === PEACE_TIME ? 'truce' : 'treaty'}. No power will deal with you for ${mins(OATH_TIME)} minutes` : ''}. `;
+      note = `<b>You are at peace with ${FACTIONS[owner].name}:</b> attacking declares war${R.lock > GS.time ? ` and breaks the ${R.lock === PEACE_TIME ? 'truce' : 'treaty'}. No power will deal with you for ${turnsTxt(OATH_TIME)}` : ''}. `;
     }
     note += `Tap ${T.kind === 'army' ? 'the army' : name} again to attack.`;
   }

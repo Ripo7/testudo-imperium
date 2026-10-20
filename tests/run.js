@@ -9,8 +9,9 @@ import controls from './controls.test.js';
 import headless from './headless.test.js';
 import params from './params.test.js';
 import cities from './cities.test.js';
+import turns from './turns.test.js';
 
-const suites = { map, params, cities, smoke, controls, powers, determinism, headless, 'save & resume': saveResume };
+const suites = { map, params, cities, turns, smoke, controls, powers, determinism, headless, 'save & resume': saveResume };
 const only = process.argv[2];
 for (const [name, fn] of Object.entries(suites)) {
   if (only && !name.startsWith(only)) continue;

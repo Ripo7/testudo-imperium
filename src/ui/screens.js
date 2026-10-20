@@ -9,15 +9,17 @@ import { VIEW } from '../render/terrain.js';
 import { buildFortMesh } from '../render/cities.js';
 import { crowd, CROWD_TYPES } from '../render/crowds.js';
 import {
-  BUILD, COMBAT, DIFFS, ECON, FACTIONS, IMPS, MARKET, num, othersOf, pctOff, perkOf, PLAYER, pName, setPlayer, sgnPct, SIG, VOICE, VS,
+  BUILD, COMBAT, DIFFS, ECON, FACTIONS, IMPS, MARKET, num, OATH_TIME, othersOf, PACT_TIME, pctOff, PEACE_TIME, perkOf, PLAYER, pName, setPlayer, sgnPct, SIG, TREATY_TIME, VOICE, VS,
 } from '../game/data.js';
 import { initCampaign } from '../game/campaign.js';
 import { resetPathfinder } from '../game/armies.js';
-import { $log, $panel, $tip, clearSel, setME, SPECT, stopPlacing, UI } from './state.js';
+import { $log, $panel, $tip, clearSel, setME, SPECT, SPEED0, stopPlacing, UI, worldRuns } from './state.js';
 import { renderPanel } from './panel.js';
 import { applyPanels, defaultHint, focusOn, goTo, log, logItems, PANELS, resetCrest, updateHUD } from './hud.js';
 import { chartHover, chartLeave, renderReport, REP } from './report.js';
-import { clock } from './format.js';
+import { turnsDone, turnsTxt } from '../game/turns.js';
+import { aiPlan } from '../game/ai.js';
+import { enterTurns } from './turnflow.js';
 import { buildMapLabels } from './labels.js';
 import { restoreGame, resumeCampaign, saveGame, showTitle } from './persist.js';
 import { DIR, setFollow, togglePolitical } from './director.js';
@@ -61,7 +63,7 @@ export function startCampaign(auto) {
   auto = auto === true;
   Sfx.init(); Sfx.click();
   UI.mode = 'play'; UI.fresh = false;
-  GS.speed = auto ? 2 : 1; UI.lastSpeed = GS.speed;
+  GS.speed = UI.lastSpeed = SPEED0;
   GS.diff = auto ? 1 : (UI.diff == null ? 1 : UI.diff);
   GS.fog = UI.fog !== false;   // the AI plays under the fog too; in autoplay you watch through one power's eyes
   if (!auto) setPlayer(UI.pick || 0);
@@ -71,17 +73,19 @@ export function startCampaign(auto) {
   $('hud').classList.remove('hidden');
   showScreen(null);
   setAuto(auto);
+  enterTurns();
   const cap0 = MAP.cities.find((c) => c.capital && c.owner === PLAYER);
   if (auto) {
     CAM.tx = 0; CAM.tz = 6; CAM.td = 150;
     DIR.tgt = { kind: 'spot', x: (MAP.W - 1) / 2, y: (MAP.H - 1) / 2 + 6, d: 150 }; DIR.hold = 7;
-    setTimeout(() => log(`<b>Autoplay.</b> The AI commands all four powers. The first to hold 60% of the provinces wins.${GS.fog ? ' You watch through the eyes of the power picked in the standings.' : ''}`, 'info'), 600);
+    setTimeout(() => log(`<b>Autoplay.</b> The AI commands all four powers, turn after turn. The first to hold 60% of the provinces wins.${GS.fog ? ' You watch through the eyes of the power picked in the standings.' : ''}`, 'info'), 600);
     setTimeout(() => log(isTouch ? 'Tap a power in the standings to follow it. Drag to take the camera.' : 'Click a power in the standings to follow it · drag to take the camera, press F to give it back.', 'info'), 1700);
   } else {
     focusOn(cap0); CAM.td = 48;
     UI.sel = GS.armies.filter((a) => a.owner === PLAYER);
     setTimeout(() => log(`${pName()} holds <b>${MAP.provinces.filter((p) => p.owner === PLAYER).map((p) => p.name).join('</b> and <b>')}</b>. ${othersOf(PLAYER)} want the rest.`, 'info', cap0), 600);
     setTimeout(() => log(isTouch ? 'Your army is selected: tap a neutral city nearby to see your odds, then tap it again to attack.' : 'Your army is selected: right-click a neutral city nearby to attack it. Hover first to see the odds.', 'info'), 1600);
+    setTimeout(() => log(`The world waits while you give your orders. Then <b>End turn</b>${isTouch ? '' : ' (Enter)'}: every power moves at once until the next turn.`, 'info'), 2800);
   }
   updateHUD(); renderPanel(true);
   saveGame();
@@ -107,10 +111,10 @@ export function openMenu() {
   $('menu').querySelector('.tag').textContent = GS.auto ? 'The four powers hold their breath.' : VOICE[PLAYER].court;
   showScreen('menu');
 }
-export function closeMenu() { showScreen(null); if (!GS.over) GS.speed = UI.menuSpeed || 1; }
+export function closeMenu() { showScreen(null); if (!GS.over) GS.speed = UI.menuSpeed ?? UI.lastSpeed; }
 export function showOver() {
   if (!GS.over || (GS.auto && !GS.factions[GS.winner])) return;   // a new campaign started meanwhile
-  const tstr = clock(GS.time), N = MAP.provinces.length;
+  const tstr = turnsDone(GS.time), N = MAP.provinces.length;
   $('againBtn').textContent = GS.auto ? 'Watch another war' : 'New campaign';
   $('otherBtn').textContent = GS.auto ? `Play as ${FACTIONS[UI.pick || 0].name} instead` : 'Watch an autoplay war instead';
   const t = $('resTitle');
@@ -166,6 +170,7 @@ export const HELP_NUMS = {
   vsSpearCav: () => '×' + num(VS.spear.cav), vsCavArch: () => '×' + num(VS.cav.arch), cavCharge: () => '×' + num(COMBAT.cavCharge),
   volleys: () => `${['no', 'one', 'two', 'three', 'four', 'five'][COMBAT.rr] || COMBAT.rr} volley${COMBAT.rr === 1 ? '' : 's'}`,
   river: () => sgnPct(COMBAT.river), flank: () => sgnPct(COMBAT.flank),
+  truce: () => turnsTxt(PEACE_TIME), treaty: () => turnsTxt(TREATY_TIME), pact: () => turnsTxt(PACT_TIME), oath: () => turnsTxt(OATH_TIME),
 };
 export function drawHelp() {
   $('eliteHelp').innerHTML = FACTIONS.map((F, i) => `<li><b>${F.name}</b> · ${F.perk.name}: ${F.perk.desc} Elite unit, <b>${SIG[i].name}</b>: ${SIG[i].desc.replace(/^\w+ only\. /, '')}</li>`).join('');
@@ -204,6 +209,7 @@ export function initScreens() {
     const on = !GS.auto;
     if (!on) setPlayer(UI.viewF);   // take command of the power being followed
     setAuto(on);
+    if (on && UI.phase === 'orders') aiPlan(GS.factions[PLAYER]);   // the AI takes over between turns: its orders for this one
     log(on ? `<b>Autoplay on.</b> The AI now commands ${pName()} as well.` : `<b>You command ${pName()}.</b>`, 'info');
     closeMenu();
   });
@@ -212,7 +218,7 @@ export function initScreens() {
   $('quitBtn').addEventListener('click', () => {
     Sfx.click();
     saveGame();
-    UI.resumeSpeed = UI.menuSpeed || UI.lastSpeed || 1;
+    UI.resumeSpeed = UI.menuSpeed || UI.lastSpeed || SPEED0;
     UI.resumeView = { x: CAM.tx, z: CAM.tz, d: CAM.td };
     UI.resumePolitical = VIEW.political;
     UI.mode = 'title'; setFollow(false); $('hud').classList.add('hidden'); showTitle();
@@ -242,12 +248,12 @@ export function initScreens() {
   // from the pause menu (phones keep help and sound there), the help goes back to the menu
   $('menuHelp').addEventListener('click', () => { drawHelp(); Sfx.click(); UI.helpFrom = 'menu'; $('helpClose').textContent = 'Back to the menu'; showScreen('help'); screens.help.scrollTop = 0; });
   $('menuMute').addEventListener('click', () => { Sfx.init(); Sfx.toggle(); setMuteIcon(); });
-  $('helpClose').addEventListener('click', () => { if (UI.helpFrom === 'menu') { UI.helpFrom = null; showScreen('menu'); return; } showScreen(null); if (!GS.over) GS.speed = UI.helpSpeed || 1; });
+  $('helpClose').addEventListener('click', () => { if (UI.helpFrom === 'menu') { UI.helpFrom = null; showScreen('menu'); return; } showScreen(null); if (!GS.over) GS.speed = UI.helpSpeed ?? UI.lastSpeed; });
   $('btnMenu').addEventListener('click', openMenu);
   $('btnMute').addEventListener('click', () => { Sfx.init(); Sfx.toggle(); setMuteIcon(); });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) return;
-    if (UI.mode === 'play' && GS.speed > 0 && !GS.over) openMenu();
+    if (UI.mode === 'play' && !GS.over && (worldRuns() || (GS.auto && GS.speed > 0))) openMenu();   // between the player's turns the world waits anyway
     else saveGame();
   });
   window.addEventListener('pagehide', saveGame);

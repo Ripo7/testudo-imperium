@@ -19,6 +19,7 @@ import { renderPanel } from './panel.js';
 import { focusOn, setSpeed, toggleMapView, toggleOverview } from './hud.js';
 import { openMenu, setMuteIcon } from './screens.js';
 import { DIR, manualCam, setFollow, togglePolitical } from './director.js';
+import { turnButton } from './turnflow.js';
 
 /* =========================================================
    Input
@@ -147,6 +148,8 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat || !playing()) return;
   switch (e.code) {
     case 'Space': setSpeed(GS.speed > 0 ? 0 : UI.lastSpeed); break;
+    // End turn, or skip to its end while it plays (a focused button takes the key itself)
+    case 'Enter': case 'NumpadEnter': if (!(e.target && e.target.closest && e.target.closest('button, input, select, textarea'))) turnButton(); break;
     case 'Digit1': setSpeed(1); break;
     case 'Digit2': setSpeed(2); break;
     case 'Digit3': setSpeed(4); break;

@@ -1,5 +1,6 @@
 import { THREE } from '../three.js';
 import { seesArmy } from '../ui/view.js';
+import { worldRuns } from '../ui/state.js';
 import { GS } from '../game/state.js';
 import { clamp, isTouch, smooth, TAU } from '../core/util.js';
 import { rng32 } from '../map/generate.js';
@@ -465,7 +466,7 @@ export function sideCenter(s, B) {
 export function updateBattleFX(t, dt) {
   ensureArrows();
   const live = new Set();
-  const paused = GS.speed <= 0;
+  const paused = !worldRuns();   // between turns, or paused: no arrows in the air
   for (const B of GS.battles) {
     if (B.done) continue;
     live.add(B.id);

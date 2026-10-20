@@ -20,7 +20,7 @@ export default async function headless() {
         const T = window.__T; T.setNoRender(true);
         T.prepareCampaign(seed); T.setAuto(true); T.GS.speed = 0; T.GS.fog = true; T.GS.sightT = 0;
         for (let i = 0; i < n && !T.GS.over; i++) T.simStep(0.1);
-        const s = JSON.parse(JSON.stringify(T.serializeGame())); delete s.at; delete s.view; delete s.gs.speed;
+        const s = JSON.parse(JSON.stringify(T.serializeGame())); delete s.at; delete s.view; delete s.gs.speed; delete s.tb;
         return JSON.stringify(s);
       }`, [seed, STEPS]);
       const tWeb = (Date.now() - t1) / 1000;

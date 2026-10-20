@@ -12,8 +12,8 @@ import { CAM, projectCell, updateCameraRig } from './render/camera.js';
 import { buildCrowdGeos, loadCloseModels, updateCrowds } from './render/crowds.js';
 import { loadLandmarkModels } from './render/landmarkModels.js';
 import { rebuildCities } from './render/cities.js';
-import { simStep } from './game/sim.js';
-import { _pp, UI } from './ui/state.js';
+import { _pp, UI, worldRuns } from './ui/state.js';
+import { advanceTurn, initTurns, updateTurnBar } from './ui/turnflow.js';
 import { initPanel, renderPanel } from './ui/panel.js';
 import { defaultHint, initHooks, updateHUD, updateLog } from './ui/hud.js';
 import { $labels, updateLabels, updateSelectionVisuals } from './ui/labels.js';
@@ -29,6 +29,7 @@ initHooks();
 initAtmosphere();
 initPanel();
 initScreens();
+initTurns();
 buildEnvironment();
 buildCrowdGeos();
 loadCloseModels();
@@ -58,27 +59,25 @@ function frame(now) {
   const rawDt = Math.max(0, (now - last) / 1000);
   const rdt = Math.min(0.05, rawDt);
   last = now;
-  if (!testFreeze && UI.mode === 'play' && GS.speed > 0 && !GS.over) {
-    let s = Math.min(0.25, rawDt) * GS.speed;
-    while (s > 1e-4) { const st = Math.min(0.1, s); simStep(st); s -= st; }
-  }
+  if (!testFreeze) advanceTurn(rawDt);   // the turn that is playing out (ui/turnflow.js)
   if (UI.mode === 'title') { UI.t0 = (UI.t0 || 0) + rdt; CAM.tx += Math.sin(UI.t0 * 0.05) * rdt * 2.5; CAM.tz += Math.cos(UI.t0 * 0.04) * rdt * 1.5; CAM.td = 115; }
   keyboardPan(rdt);
   updateDirector(rdt);
   updateCameraRig(rdt);
-  UI.t += rdt * (GS.speed > 0 || UI.mode !== 'play' ? 1 : 0.15);
+  UI.t += rdt * (worldRuns() || UI.mode !== 'play' ? 1 : 0.15);   // between turns the soldiers barely stir
   updateCrowds(UI.t);
   updateDust(rdt);
   SIGHT.on = fogShown(); updateFogTexture();
   if (PROV.version !== provV && MAP) { provV = PROV.version; updateTerrainColors(); }   // a place changed hands: repaint the provinces
   if (UI.mode === 'play') {
     updateSelectionVisuals();
+    updateTurnBar();
     UI.hudT -= rdt;
     if (UI.hudT <= 0) { UI.hudT = 0.25; updateHUD(); renderPanel(false); updateLog(); defaultHint(); }
     saveT -= rdt;
     if (saveT <= 0) { saveT = 15; saveGame(); }
     battleSoundT -= rdt;
-    if (battleSoundT <= 0 && GS.speed > 0) {
+    if (battleSoundT <= 0 && worldRuns()) {
       battleSoundT = 0.35;
       const vis = GS.battles.some((B) => !B.done && seesBattle(B) && projectCell(B.x, B.y, 0, _pp).vis && _pp.x > 0 && _pp.x < window.innerWidth && _pp.y > 0 && _pp.y < window.innerHeight);
       if (vis && CAM.d < 110) { if (Math.random() < 0.5) Sfx.clang(); else Sfx.hit(); }

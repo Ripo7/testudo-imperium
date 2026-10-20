@@ -31,7 +31,8 @@ export const TARGETS = {
   wars: {
     // each power's share of the wins
     winShare: { band: [0.2, 0.3], weight: 10 },
-    // guardrails: the median war in minutes, and the share of wars still going at the time limit
+    // guardrails: the median war in minutes of game time (a turn is 30 s: 20–30 min is 40–60 turns), and the share of
+    // wars still going at the time limit
     medianMin: { band: [20, 30], weight: 4 },
     unfinished: { band: [0, 0.07], weight: 4 },
     // every mechanic in use: share of all units raised (by men) of each common type, per power

@@ -13,7 +13,7 @@ export default async function params() {
   check(JSON.stringify(body) === JSON.stringify(BALANCE), 'balance.js written back from the values is the same data');
   const h0 = paramsHash();
   setParam('units.spear.atk', 0.9); setParam('buildings.farm.food', 1.1); setParam('perks.carthage.port', 0.8);
-  check(UNITS.spear.atk === 0.9 && IMPS.farm.desc === '+1.1 food/s' && perkOf(1).port === 0.8 && perkOf(1).desc.includes('0.8 gold/s'), 'a value set at run time reaches the units, the buildings, the perks and their texts');
+  check(UNITS.spear.atk === 0.9 && IMPS.farm.desc === '+33 food a turn' && perkOf(1).port === 0.8 && perkOf(1).desc.includes('24 more gold a turn'), 'a value set at run time reaches the units, the buildings, the perks and their texts');
   check(paramsHash() !== h0, 'the stamp of a set of values changes with them');
   resetParams();
   check(getParam('units.spear.atk') === DEFAULTS['units.spear.atk'] && paramsHash() === h0, 'reset brings every value back');

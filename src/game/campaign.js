@@ -38,7 +38,7 @@ export function computeCityYield(c) {
 export function initCampaign(seed, gen) {
   setMap(generateMap(seed, gen));
   Object.assign(GS, { time: 0, armies: [], forts: [], battles: [], over: null, winner: null, rival: null, nextId: 1, stats: { won: 0, lost: 0, captured: 0, battles: 0 }, checkT: 0, rel: {}, fog: false, diff: 1, envoy: null,
-    fstats: fillStats(), chron: [], hist: [], rivalF: -1, peaceT: 0, sightT: 0 });
+    fstats: fillStats(), chron: [], hist: [], rivalF: -1, peaceT: 0, sightT: 0, planAt: 0 });
   // every pair of powers, in a fixed order (relOf would otherwise create them as they are first read, the screen's
   // reads included, so the saved state would depend on what was on screen)
   for (let f = 0; f < FACTIONS.length; f++) for (let g = f + 1; g < FACTIONS.length; g++) relOf(f, g);
@@ -53,13 +53,11 @@ export function initCampaign(seed, gen) {
   for (const p of MAP.provinces) { p.owner = NEUTRAL; computeProvYield(p); }
   for (const c of MAP.cities) { c.owner = NEUTRAL; c.walls = 0; c.wallBuild = null; c.queue = []; c.capital = false; c.loyal = 1; c.imps = []; c.impBuild = null; computeCityYield(c); }
 
-  const P = MAP.provinces, mc = (p) => MAP.cities[p.major];
-  const caps = startingCapitals(seed);
-  caps.forEach((p, f) => {
-    claimProvince(p, f);
-    mc(p).capital = true; mc(p).walls = 1;
-    const nb = p.neighbors.map((k) => P[k]).filter((q) => q.owner === NEUTRAL && !caps.includes(q)).sort((a, b) => b.cells.length - a.cells.length)[0];
-    if (nb) claimProvince(nb, f);
+  const mc = (p) => MAP.cities[p.major];
+  const starts = startingProvinces(seed), caps = starts.map((list) => list[0]);
+  starts.forEach((list, f) => {
+    for (const p of list) claimProvince(p, f);
+    mc(list[0]).capital = true; mc(list[0]).walls = 1;
   });
   for (const c of MAP.cities) { c.militiaMax = militiaMaxOf(c); c.militia = c.militiaMax; }
   updateStanding();
@@ -92,6 +90,16 @@ export function startingCapitals(seed) {
   // deal the four starting spots out at random, so no power always gets the first (random) pick
   for (let i = caps.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [caps[i], caps[j]] = [caps[j], caps[i]]; }
   return caps;
+}
+/** Each power's starting provinces, in power order: its capital's, then the largest free neighbour. */
+export function startingProvinces(seed) {
+  const P = MAP.provinces, caps = startingCapitals(seed), taken = new Set();
+  return caps.map((p) => {
+    taken.add(p);
+    const nb = p.neighbors.map((k) => P[k]).filter((q) => !taken.has(q) && !caps.includes(q)).sort((a, b) => b.cells.length - a.cells.length)[0];
+    if (nb) taken.add(nb);
+    return nb ? [p, nb] : [p];
+  });
 }
 export function claimProvince(p, f) {
   p.owner = f;
