@@ -1,11 +1,11 @@
 import { cityEstimate, fogRules, knowsArmy } from './sight.js';
 import { atPeace, atWar, declareWar, relOf } from './diplomacy.js';
-import { SET_W } from './standing.js';
+import { placesOf, SET_W } from './standing.js';
 import { angDiff, cellOf, cloneComp, dist, emptyComp, GS, MAP, menOf, rnd, rndIn, starsOf } from './state.js';
 import { BIOME, BIOME_NAME, rng32 } from '../map/generate.js';
 import { BUILD, COMBAT, NEUTRAL, PLAYER, sgnPct, sigOf, TERRAIN_DEF, TW_CAV, TW_DEF, TYPES5, UNITS, VS } from './data.js';
 import { militiaMaxOf } from './campaign.js';
-import { findPath, nearestCity } from './armies.js';
+import { findPath, nearestCity, orderTarget } from './armies.js';
 import { HOOKS } from './hooks.js';
 import { recordBattle, recordCapture } from './chronicle.js';
 
@@ -223,6 +223,7 @@ export function updateBattles(dt) {
       if (B.place && B.place.militia != null && B.sides[1].militia) B.place.militia = B.sides[1].militia.men;
       const br0 = sideBroken(B.sides[0]), br1 = sideBroken(B.sides[1]);
       if (br0 || br1 || B.round > 60) endBattle(B, br1 && !br0 ? 0 : br0 && !br1 ? 1 : (br0 && br1 && sideMen(B.sides[0]) / B.sides[0].start > sideMen(B.sides[1]) / B.sides[1].start ? 0 : 1));
+      else fallBack(B);
     }
   }
   GS.battles = GS.battles.filter((B) => !B.done || (GS.time - B.endT) < 3);
@@ -257,12 +258,14 @@ export function endBattle(B, winner) {
     rout(a, B);
   }
   if (B.place) B.place.battle = null;
+  const Pv = B.kind === 'city' ? MAP.provinces[B.place.prov] : B.kind === 'fort' ? MAP.provinces[MAP.prov[cellOf(B.place.x, B.place.y)]] : null;
   if (B.kind === 'city') {
     if (winner === 0) captureCity(B.place, B.sides[0].faction);
     else B.place.militia = Math.max(B.place.militia, 0);
   } else if (B.kind === 'fort') {
     if (winner === 0) { B.place.dead = true; HOOKS.fortRemoved(B.place); GS.forts = GS.forts.filter((f) => f !== B.place); }
   }
+  if (winner === 0 && Pv) for (const a of W.armies) pressOn(a, Pv, B.place);
   B.lost = B.sides.map((S) => Math.round(sideLosses(S)));   // the pursuit included: what the chronicle, the stats and the messages report
   recordBattle(B);
   // the player's own tally (the end-of-war report)
@@ -270,14 +273,37 @@ export function endBattle(B, winner) {
   if (ps >= 0) { GS.stats.battles++; if (winner === ps) GS.stats.won++; else GS.stats.lost++; }
   HOOKS.battleEnd(B);
 }
+// An army whose battle is plainly lost falls back by itself, whoever commands it: a turn is too long to wait for the
+// order. After a few rounds, outnumbered more than two to one (warlike powers hold on a little longer).
+export function fallBack(B) {
+  if (B.round < 4) return;
+  for (let si = 0; si < 2 && !B.done; si++) {
+    const mine = sideMen(B.sides[si]), theirs = sideMen(B.sides[1 - si]);
+    for (const a of B.sides[si].armies.slice()) {
+      if (B.done) return;
+      if (a.dead || menOf(a.comp) <= 120 || !canRetreat(a) || mine >= theirs * (0.5 - 0.15 * GS.factions[a.owner].aggr)) continue;
+      retreatArmy(a);   // fell back
+    }
+  }
+}
+// An aggressive army that has taken a place presses on to the next one still held against it in the province, as
+// long as it likes its odds, whoever commands it: provinces are won whole, and the order would come a turn late.
+export function pressOn(a, P, place) {
+  const T = a.target;
+  if (a.dead || a.stance !== 'aggr' || (a.path && a.pi < a.path.length) || (T && T.ref !== place && !T.ref.dead && T.ref.owner !== a.owner)) return;
+  const next = placesOf(P).filter((p) => p.ref.owner !== a.owner && !p.ref.dead && (p.kind === 'city' || p.ref.built >= 1) && (p.ref.owner === NEUTRAL || atWar(a.owner, p.ref.owner)) && !(p.ref.battle && !p.ref.battle.done))
+    .sort((p, q) => dist(a, p.ref) - dist(a, q.ref))[0];
+  if (!next || estimateOdds([a], next, 6, a.owner).p < 0.6) return;
+  orderTarget(a, next.kind, next.ref);   // pressed on
+}
 export function roundComp(a) { for (const t of ['spear', 'leg', 'arch', 'cav']) a.comp[t] = Math.round(a.comp[t]); a.comp.siege = Math.floor(a.comp.siege + 0.3); }
 export function rout(a, B) {
   a.state = 'rout'; a.routT = 6; a.target = null;
   const home = nearestCity(a.x, a.y, (c) => c.owner === a.owner && !(c.battle && !c.battle.done));
   if (home) a.path = findPath(a.x, a.y, home.x + 1, home.y + 1, a.owner);
   else {
-    const ang = Math.atan2(a.x - B.x, a.y - B.y);
-    a.path = findPath(a.x, a.y, a.x + Math.sin(ang) * 10, a.y + Math.cos(ang) * 10, a.owner);
+    const len = Math.hypot(a.x - B.x, a.y - B.y), ux = len ? (a.x - B.x) / len : 0, uy = len ? (a.y - B.y) / len : 1;   // away from the battle
+    a.path = findPath(a.x, a.y, a.x + ux * 10, a.y + uy * 10, a.owner);
   }
   a.pi = 0; a.pathVersion++;
   if (!a.path) { a.state = 'idle'; a.routT = 0; }

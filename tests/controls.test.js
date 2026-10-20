@@ -1,6 +1,6 @@
 // Controls: on a phone, the dock, a march planned with one tap and given with a second, an attack card,
-// a long press that adds an army to the selection, and the layout held upright and sideways;
-// on a desktop, the keys that step through the armies.
+// a long press that adds an army to the selection, a turn played from the dock, and the layout held upright and
+// sideways; on a desktop, the keys that step through the armies, and a turn played out by Enter.
 import { serve, launch, openGame, run, check } from './helpers.js';
 
 // a still camera over (x, y) and the screen position of a map cell
@@ -43,7 +43,7 @@ export default async function controls() {
     const ground = await run(page, `([x, y]) => { const h = window.__T.hitTest(x, y); return h && h.kind; }`, [p.x, p.y]);
     await page.touchscreen.tap(p.x, p.y);
     const plan = await run(page, `() => { const T = window.__T, o = T.UI.order; T.updateLabels(); const f = document.querySelector('.lb.flag'); return { order: !!o && !o.h && o.ok, eta: o && Math.round(o.eta), flag: !!f && f.style.display !== 'none', panel: document.getElementById('panel').textContent.includes('Tap the standard again'), state: T.UI.sel[0].state }; }`);
-    check(ground === 'prov' && plan.order && plan.flag && plan.panel && plan.state === 'idle', `[phone] a tap on the map plants the standard and waits (about ${plan.eta} s of march, the army ${plan.state})${ground === 'prov' && plan.order && plan.flag && plan.panel ? '' : ` [hit ${ground}, order ${plan.order}, flag ${plan.flag}, panel ${plan.panel}]`}`);
+    check(ground === 'prov' && plan.order && plan.flag && plan.panel && plan.state === 'idle', `[phone] a tap on the map plants the standard and waits (${plan.eta} s of march, the army ${plan.state})${ground === 'prov' && plan.order && plan.flag && plan.panel ? '' : ` [hit ${ground}, order ${plan.order}, flag ${plan.flag}, panel ${plan.panel}]`}`);
     p = await run(page, SCREEN, [spot.x, spot.y, 0]);
     await page.touchscreen.tap(p.x + 4, p.y - 18);   // on the cloth of the standard
     const go = await run(page, `() => { const T = window.__T, a = T.UI.sel[0]; return { order: T.UI.order, state: a.state, path: !!a.path }; }`);
@@ -74,14 +74,27 @@ export default async function controls() {
     const both = await run(page, `([a, b]) => { const ids = window.__T.UI.sel.map((x) => x.id); return { ids, ok: ids.includes(a) && ids.includes(b) }; }`, [setup.a, setup.b]);
     check(both.ok, `[phone] a long press on another army adds it to the selection (${both.ids})`);
 
-    // pause, speed and map view from the dock
-    await run(page, `() => { window.__T.GS.speed = 1; window.__T.UI.lastSpeed = 1; }`);
-    await page.tap('#dkPause');
-    const paused = await run(page, `() => ({ speed: window.__T.GS.speed, label: document.querySelector('#dkPause span').textContent })`);
+    // a turn from the dock: End turn plays it out; while it plays, Pause takes the place of Armies, the speed steps,
+    // orders wait; Skip ends it, with the report of the turn (the frame loop held still: setFreeze)
+    await run(page, `() => { const T = window.__T; T.setFreeze(true); T.GS.speed = 1; T.UI.lastSpeed = 1; T.clearSel(); T.renderPanel(true); T.updateHUD(); }`);
+    const shown = (id) => `getComputedStyle(document.getElementById('${id}')).display !== 'none'`;
+    const t0 = await run(page, `() => ({ time: window.__T.GS.time, phase: window.__T.UI.phase, label: document.getElementById('dkTurnTxt').textContent, armies: ${shown('dkArmies')}, pause: ${shown('dkPlay')} })`);
+    await page.tap('#dkTurn');
+    const playing = await run(page, `() => ({ phase: window.__T.UI.phase, label: document.getElementById('dkTurnTxt').textContent, armies: ${shown('dkArmies')}, pause: ${shown('dkPlay')} })`);
+    check(t0.phase === 'orders' && t0.label === 'End turn' && t0.armies && !t0.pause && playing.phase === 'play' && playing.label === 'Skip' && !playing.armies && playing.pause,
+      `[phone] End turn plays the turn: the button now reads ${playing.label}, and Pause takes the place of Armies (${JSON.stringify([t0, playing])})`);
+    await page.tap('#dkPlay');
+    const paused = await run(page, `() => ({ speed: window.__T.GS.speed, label: document.querySelector('#dkPlay span').textContent })`);
     await page.tap('#dkSpeed');
     const sped = await run(page, `() => window.__T.GS.speed`);
-    await run(page, `() => { window.__T.GS.speed = 0; }`);
-    check(paused.speed === 0 && paused.label === 'Play' && sped === 2, `[phone] the dock pauses (then reads ${paused.label}) and steps the speed (now ${sped}×)`);
+    check(paused.speed === 0 && paused.label === 'Play' && sped === 2, `[phone] the dock pauses the turn (then reads ${paused.label}) and steps the speed (now ${sped}×)`);
+    const refused = await run(page, `() => { const T = window.__T, a = T.myArmies()[0]; T.UI.sel = [a]; const before = a.target; const ok = T.issueOrder(null, { x: Math.round(a.x) + 3, y: Math.round(a.y) }); const same = a.target === before; T.clearSel(); return !ok && same; }`);
+    check(refused, '[phone] an order given while the turn plays out is refused');
+    await page.tap('#dkTurn');
+    const after = await run(page, `() => ({ phase: window.__T.UI.phase, time: window.__T.GS.time, report: !document.getElementById('turnrep').classList.contains('hidden'), label: document.getElementById('dkTurnTxt').textContent })`);
+    check(after.phase === 'orders' && Math.abs(after.time - (Math.floor(t0.time / 30 + 1e-6) + 1) * 30) < 1e-3 && after.report && after.label === 'End turn',
+      `[phone] Skip plays the rest of the turn and stops at its end (${after.time.toFixed(2)} s), with the report of the turn`);
+    await run(page, `() => { const T = window.__T; T.hideTurnReport(); T.GS.speed = 0; T.setFreeze(false); T.UI.sel = T.myArmies().slice(0, 2); T.renderPanel(true); }`);
     await page.tap('#dkView');
     const hid = await run(page, `() => { const st = document.getElementById('stand'); return { stand: getComputedStyle(st).display, txt: document.getElementById('dkViewTxt').textContent }; }`);
     await page.tap('#dkView');
@@ -110,6 +123,16 @@ export default async function controls() {
     const all = await run(D.page, `() => ({ sel: window.__T.UI.sel.length, n: window.__T.myArmies().length, dock: getComputedStyle(document.getElementById('dock')).display })`);
     check(n1.length === 1 && n2.length === 1 && n1[0] !== n2[0] && all.sel === all.n && all.n >= 3, `[desktop] N steps through the armies (${n1} then ${n2}), G selects all ${all.sel}`);
     check(all.dock === 'none', '[desktop] no dock: the top bar keeps its buttons');
+    // Enter ends the turn; the frame loop plays it out at the chosen speed and stops at its end by itself
+    await run(D.page, `() => { const T = window.__T; T.clearSel(); T.setNoRender(true); T.UI.lastSpeed = 8; T.GS.speed = 8; document.activeElement && document.activeElement.blur(); }`);
+    const d0 = await run(D.page, `() => ({ time: window.__T.GS.time, txt: document.getElementById('endTurnTxt').textContent })`);
+    await D.page.keyboard.press('Enter');
+    const d1 = await run(D.page, `() => ({ phase: window.__T.UI.phase, txt: (window.__T.updateHUD(), document.getElementById('endTurnTxt').textContent) })`);
+    await D.page.waitForFunction(() => window.__T.UI.phase === 'orders', null, { timeout: 90000 });
+    const d2 = await run(D.page, `() => ({ time: window.__T.GS.time, txt: document.getElementById('endTurnTxt').textContent, turn: document.getElementById('turnNo').textContent, report: !document.getElementById('turnrep').classList.contains('hidden') })`);
+    await run(D.page, `() => { window.__T.GS.speed = 0; }`);
+    check(d0.txt === 'End turn' && d1.phase === 'play' && d1.txt === 'Skip' && Math.abs(d2.time - 30) < 1e-3 && d2.turn === 'Turn 2' && d2.report && d2.txt === 'End turn',
+      `[desktop] Enter plays the turn out, and the world stops at its end: ${d2.turn}, the report shown (${JSON.stringify([d0, d1, d2])})`);
     check(!D.errors.length, `[desktop] no script errors${D.errors.length ? ': ' + D.errors.slice(0, 5).join(' | ') : ''}`);
     await D.ctx.close();
   } finally { await browser.close(); site.close(); }

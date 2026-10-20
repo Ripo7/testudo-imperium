@@ -24,9 +24,10 @@ export const over = (base, props) => Object.assign(Object.create(base), props);
 //   build: cost of walls, forts and siege engines · buildTime: their construction time
 //   costMul: per-resource unit costs · feed: food upkeep · pay: soldiers' pay · recruitTime / unitCost: for every unit
 //   nile: food from river provinces · desertMarch: no losses crossing deserts · port: gold/s for every coastal city
+// (rates are per second of game time; texts quote them per turn, TURN_TIME seconds)
 export const PERK_TEXT = [
   (P) => `Walls, forts, improvements and siege engines cost ${pctOff(P.build)} less, and building takes ${pctOff(P.buildTime)} less time.`,
-  (P) => `Hired troops bring their own grain: units need ${P.costMul.food === P.feed ? `${pctOff(P.feed)} less food to raise and to feed` : `${pctOff(P.costMul.food)} less food to raise and ${pctOff(P.feed)} less to feed`}. Punic harbours trade: every coastal city earns ${num(P.port)} gold/s more, and the markets pay better (sell for ${P.market.sell} gold, buy for ${P.market.buy}).`,
+  (P) => `Hired troops bring their own grain: units need ${P.costMul.food === P.feed ? `${pctOff(P.feed)} less food to raise and to feed` : `${pctOff(P.costMul.food)} less food to raise and ${pctOff(P.feed)} less to feed`}. Punic harbours trade: every coastal city earns ${num(P.port * TURN_TIME)} more gold a turn, and the markets pay better (sell for ${P.market.sell} gold, buy for ${P.market.buy}).`,
   (P) => `Every unit musters ${pctOff(P.recruitTime)} faster and costs ${pctOff(P.unitCost)} less.`,
   (P) => `Provinces with a river grow ${pctOff(P.nile)} more food, and Egyptian armies cross deserts without losses.`,
 ];
@@ -104,8 +105,8 @@ export const fortCost = (f) => scaleCost(BUILD.fort.cost, perkOf(f).build || 1);
 export const buildTime = (f) => perkOf(f).buildTime || 1;
 // City improvements: a major city has two slots, a town one. One is built at a time.
 export const IMPS = {
-  farm: textOf(over(BUILD.farm, { name: 'Farmlands', ico: '🌾' }), 'desc', () => `+${num(BUILD.farm.food)} food/s`),
-  forum: textOf(over(BUILD.forum, { name: 'Forum', ico: '🏛' }), 'desc', () => `+${num(BUILD.forum.gold)} gold/s`),
+  farm: textOf(over(BUILD.farm, { name: 'Farmlands', ico: '🌾' }), 'desc', () => `+${num(BUILD.farm.food * TURN_TIME)} food a turn`),
+  forum: textOf(over(BUILD.forum, { name: 'Forum', ico: '🏛' }), 'desc', () => `+${num(BUILD.forum.gold * TURN_TIME)} gold a turn`),
   barracks: textOf(over(BUILD.barracks, { name: 'Barracks', ico: '⚔' }), 'desc', () => `recruits ${pctOff(BUILD.barracks.speed)} faster here, militia +${BUILD.barracks.militia}`),
   temple: textOf(over(BUILD.temple, { name: 'Temple', ico: '🏺' }), 'desc', () => `order returns ${num(BUILD.temple.loyalty)}× faster; ${BUILD.temple.stretch === 0.5 ? 'halves' : `cuts by ${pctOff(BUILD.temple.stretch)}`} the overstretch penalty here`),
 };
@@ -124,7 +125,9 @@ export const DIFFS = [
   { name: 'Imperator', note: 'The AI earns 25% more and strikes sooner.', inc: 1.25, need: -0.07, tick: 1.8 },
 ];
 export const diffOf = () => (GS.auto ? DIFFS[1] : DIFFS[GS.diff == null ? 1 : GS.diff]);
-export const BASE_SPEED = 0.8, PEACE_TIME = 240;
+// a turn: the seconds of game time that play out between two rounds of orders (game/turns.js)
+export const TURN_TIME = 30;
+export const BASE_SPEED = 1.0, PEACE_TIME = 240;
 // the others turn on a power holding more than RIVALRY.gangAt of the provinces (five sixths of the way to victory), the harder (up to gangMax) the further past it
 export const RIVALRY = B.diplomacy.rivalry;
 export const PACT_TIME = 180, TREATY_TIME = 150, OATH_TIME = 240;

@@ -1,5 +1,6 @@
-import { FACTIONS, RES, sigOf } from '../game/data.js';
+import { FACTIONS, RES, sigOf, TURN_TIME } from '../game/data.js';
 import { ownerName } from '../game/state.js';
+import { SEASONS, turnOf, turnsTxt } from '../game/turns.js';
 
 /* =========================================================
    Icons & formatting
@@ -37,9 +38,15 @@ export const oddsWord = (p) => (p >= 0.8 ? ['Decisive', 'good'] : p >= 0.6 ? ['F
 // faction colours for chart lines: each power's own hue, stepped so the four stay apart on the dark tablet,
 // for colour-blind readers too (checked with the dataviz palette validator, all pairs)
 export const FCHART = ['#c6404a', '#a966b8', '#1e8fee', '#af8433'];
-export const clock = (t) => { const s = Math.max(0, Math.floor(t)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-// a march time, rounded as a commander would say it: "25 s", "1:40"
-export const etaShort = (t) => (t < 57.5 ? Math.max(5, Math.round(t / 5) * 5) + ' s' : clock(Math.round(t / 5) * 5));
+/* ---------- turns, as the interface says them (the simulation counts seconds: game/turns.js) ---------- */
+// the turn under way at time t, and its season: "Spring, year 3" (four turns a year)
+export const dateOf = (t) => { const n = turnOf(t); return `${SEASONS[(n - 1) % 4]}, year ${Math.floor((n - 1) / 4) + 1}`; };
+// a rate per second of game time, as a whole number per turn: "+123", "−40"
+export const fmtTurnRate = (r) => (r * TURN_TIME >= -0.5 ? '+' : '−') + fmt(Math.abs(r * TURN_TIME));
+export const perTurn = (r) => r * TURN_TIME;
+// a march, as a commander would plan it: how many turns until it arrives, given the seconds left in this one
+export const etaTurns = (eta, left) => (eta <= left + 1e-6 ? 'this turn' : turnsTxt(eta - left + TURN_TIME));
+
 // small one-colour glyphs for dispatches and the chronicle (they take the text colour)
 const g = (d, fill = true) => `<svg viewBox="0 0 24 24" aria-hidden="true"${fill ? ' fill="currentColor"' : ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'}>${d}</svg>`;
 export const GLYPH = {

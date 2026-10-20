@@ -1,4 +1,5 @@
 import { FACTIONS, RES } from './data.js';
+import { wrapAngle } from '../core/math.js';
 
 export let MAP = null;
 export function setMap(m) { MAP = m; }
@@ -14,7 +15,7 @@ export function rnd() {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 export const rndIn = (a, b) => a + rnd() * (b - a);
-export const angDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+export const angDiff = (a, b) => wrapAngle(b - a);   // from + − × ÷ alone, the same in every engine (core/math.js)
 export const emptyComp = () => ({ spear: 0, leg: 0, arch: 0, cav: 0, siege: 0 });
 export const menOf = (c) => c.spear + c.leg + c.arch + c.cav;
 export const cloneComp = (c) => ({ spear: c.spear, leg: c.leg, arch: c.arch, cav: c.cav, siege: c.siege });

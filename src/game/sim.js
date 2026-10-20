@@ -6,7 +6,8 @@ import { diffOf, PLAYER } from './data.js';
 import { updateArmy } from './armies.js';
 import { detectContacts, updateBattles } from './battles.js';
 import { economy } from './economy.js';
-import { aiTick } from './ai.js';
+import { aiEconomy } from './ai.js';
+import { beginTurn } from './turns.js';
 import { HOOKS } from './hooks.js';
 import { historyTick, recordFall, sampleHistory } from './chronicle.js';
 
@@ -14,6 +15,7 @@ import { historyTick, recordFall, sampleHistory } from './chronicle.js';
    Simulation step
    ========================================================= */
 export function simStep(dt) {
+  beginTurn();   // at a turn's start (the screen calls it at the end of the turn before, before the player's orders)
   GS.time += dt;
   GS.sightT = (GS.sightT || 0) - dt;
   if (GS.sightT <= 0) { GS.sightT = SIGHT_EVERY; updateSight(); }
@@ -24,7 +26,7 @@ export function simStep(dt) {
   for (const F of GS.factions) {
     if (F.isPlayer || !F.alive) continue;
     F.aiT -= dt;
-    if (F.aiT <= 0) { F.aiT = diffOf().tick - 0.3 + rnd() * 0.6; aiTick(F); }
+    if (F.aiT <= 0) { F.aiT = diffOf().tick - 0.3 + rnd() * 0.6; aiEconomy(F); }
   }
   historyTick();
   GS.checkT -= dt;

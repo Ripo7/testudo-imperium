@@ -67,7 +67,9 @@ async function scenarioOnce(browser, url, modeBtn, label) {
   await click(page, '#contBtn'); await page.waitForTimeout(300);
   const st2 = await T(page, () => [window.__T.UI.mode, document.getElementById('hud').className, window.__T.GS.speed]);
   check(st2[0] === 'play' && !st2[1].includes('hidden') && st2[2] > 0, `[${label}] Continue resumes play`);
-  check(Math.abs((await T(page, () => window.__T.GS.time)) - s1.gs.time) < 1, `[${label}] clock carried over`);
+  // the turn that was playing when it was saved plays on at once: a few seconds of game time may have gone by
+  const tNow = await T(page, () => window.__T.GS.time);
+  check(tNow >= s1.gs.time - 0.01 && tNow - s1.gs.time < 10, `[${label}] clock carried over (${s1.gs.time.toFixed(1)} s saved, ${tNow.toFixed(1)} s now)`);
   console.log('  played on to', notOver(await run(page, SIM, [120, false])));
 
   await T(page, () => { window.__T.GS.speed = 1; });
@@ -79,7 +81,8 @@ async function scenarioOnce(browser, url, modeBtn, label) {
 
   const tBefore = (await saved(page)).gs.time;
   notOver(await run(page, SIM, [60, false]));
-  await T(page, () => { window.__T.GS.speed = 1; Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  // while a turn plays out (between the player's turns the world waits anyway)
+  await T(page, () => { const X = window.__T; X.GS.speed = 1; X.UI.phase = 'play'; X.UI.sliceEnd = X.turnEndOf(X.GS.time); Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
   const tAfter = (await saved(page)).gs.time;
   check(tAfter > tBefore + 50, `[${label}] switching away saves (${tBefore.toFixed(0)}s -> ${tAfter.toFixed(0)}s)`);
   check(await page.isVisible('#menu'), `[${label}] switching away pauses`);

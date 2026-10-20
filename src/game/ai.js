@@ -6,7 +6,7 @@ import {
 } from './data.js';
 import { fortProv, holdsIn, placesOf } from './standing.js';
 import { mergeArmies, nearestCity, orderTarget } from './armies.js';
-import { canRetreat, estimateOdds, powerOf, retreatArmy, retreatSide, sideComp, sideMen } from './battles.js';
+import { estimateOdds, powerOf, sideComp } from './battles.js';
 import { buildFort, buildImp, fortify, fortSpotOk, recruit, trade } from './economy.js';
 import { BALANCE } from './balance.js';
 
@@ -17,9 +17,12 @@ import { BALANCE } from './balance.js';
 // or breaks a rival's province (breaks; breakLeader for the power closest to victory); fort: an enemy fort's base value
 // need: the odds of victory an army wants before it attacks (less for aggressive powers)
 export const AI_PROV = BALANCE.ai.prov;
-export function aiTick(F) {
+// The AI works on two clocks: its economy (walls, market, buildings, recruits, forts) every couple of seconds, as a
+// governor would, and its armies once a turn, at the turn's start, like the player (aiPlan, from game/turns.js).
+// what a power sees and wants, shared by both
+export function aiView(F) {
   const mine = MAP.cities.filter((c) => c.owner === F.id);
-  if (!mine.length) return;
+  if (!mine.length) return null;
   const majors = mine.filter((c) => c.major);
   const armies = GS.armies.filter((a) => !a.dead && a.owner === F.id);
   // under the fog, the AI only reacts to the enemy armies it can see
@@ -36,6 +39,12 @@ export function aiTick(F) {
     const breaks = Pv.owner >= 0 && Pv.owner !== F.id ? (gang && Pv.owner === topF.id ? AI_PROV.breakLeader : AI_PROV.breaks) : 1;
     return completes * breaks;
   };
+  return { mine, majors, armies, hostileArmies, threatOf, capital, topF, gang, provValue };
+}
+export function aiEconomy(F) {
+  const V = aiView(F);
+  if (!V) return;
+  const { mine, majors, armies, hostileArmies, threatOf, capital } = V;
 
   // --- walls: the capital first, then threatened cities; spare stone goes into walls everywhere
   const rich = F.res.stone > 700;
@@ -113,10 +122,16 @@ export function aiTick(F) {
     const c = front[0] || majors[0];
     const e = nearestCity(c.x, c.y, (o) => o.owner >= 0 && atWar(F.id, o.owner) && o.major);
     if (e) {
-      const ang = Math.atan2(e.x - c.x, e.y - c.y);
-      for (let d = 7; d >= 4; d--) { const x = c.x + Math.sin(ang) * d, y = c.y + Math.cos(ang) * d; if (fortSpotOk(F.id, x, y) && canAfford(F, fortCost(F.id))) { buildFort(F, x, y); break; } }
+      const len = Math.hypot(e.x - c.x, e.y - c.y) || 1, ux = (e.x - c.x) / len, uy = (e.y - c.y) / len;   // towards the enemy
+      for (let d = 7; d >= 4; d--) { const x = c.x + ux * d, y = c.y + uy * d; if (fortSpotOk(F.id, x, y) && canAfford(F, fortCost(F.id))) { buildFort(F, x, y); break; } }
     }
   }
+}
+// the armies' orders for the turn
+export function aiPlan(F) {
+  const V = aiView(F);
+  if (!V) return;
+  const { mine, armies, hostileArmies, threatOf, topF, gang, provValue } = V;
 
   // --- consolidate armies standing together
   for (const a of armies) {
@@ -130,14 +145,7 @@ export function aiTick(F) {
   // --- military
   for (const a of armies) {
     if (a.dead) continue;
-    if (a.state === 'battle') {
-      if (canRetreat(a)) {
-        const B = a.battle, si = retreatSide(a), mine = sideMen(B.sides[si]), theirs = sideMen(B.sides[1 - si]);
-        const heavy = B.round >= 4 && mine < theirs * (0.5 - 0.15 * F.aggr) && menOf(a.comp) > 120;
-        if (heavy) retreatArmy(a);
-      }
-      continue;
-    }
+    if (a.state === 'battle') continue;   // its generals fall back by themselves when a battle is lost (fallBack in battles.js)
     if (a.state === 'rout') continue;
     const men = menOf(a.comp);
     if (a.state === 'move' && a.target && a.aiCommit > GS.time) {

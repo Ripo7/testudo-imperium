@@ -2,8 +2,9 @@ import { atWar, relOf, wearyWord } from '../game/diplomacy.js';
 import { cityOf, sawIt } from '../game/chronicle.js';
 import { DISPUTED, holdsIn, STAND } from '../game/standing.js';
 import { GS, MAP, menOf, starsOf } from '../game/state.js';
-import { FACTIONS, IMPS, PEACE_TIME, RES } from '../game/data.js';
-import { clock, fmtInt, fmtRate, fname, GLYPH, IC, icOf } from './format.js';
+import { FACTIONS, IMPS, PEACE_TIME, RES, TURN_TIME } from '../game/data.js';
+import { turnOf, turnsDone, turnsIn, turnsTxt } from '../game/turns.js';
+import { dateOf, fmt, fmtInt, fmtTurnRate, fname, GLYPH, IC, icOf, perTurn } from './format.js';
 import { ME, UI } from './state.js';
 import { armyStatus, headerHtml } from './panel.js';
 
@@ -59,13 +60,13 @@ export function knownTo(e, V) {
 export const notable = (e, V) => (e.k === 'prov' ? e.f === V || e.g === V : e.k !== 'bat' || e.a === V || e.d === V || (e.p === 'c' && e.w === 0) || deadOf(e) >= 250);
 export function eventRow(e, I) {
   const tag = I.go ? 'button' : 'div';
-  return `<${tag} class="ce ${I.cat}"${I.go ? ` data-act="goto:${I.go}"` : ''}><time>${clock(e.t)}</time><i class="${I.ico}">${GLYPH[I.ico]}</i><span>${I.html}${I.sub ? `<small>${I.sub}</small>` : ''}</span></${tag}>`;
+  return `<${tag} class="ce ${I.cat}"${I.go ? ` data-act="goto:${I.go}"` : ''}><time title="Turn ${turnOf(e.t)}, ${dateOf(e.t)}">T${turnOf(e.t)}</time><i class="${I.ico}">${GLYPH[I.ico]}</i><span>${I.html}${I.sub ? `<small>${I.sub}</small>` : ''}</span></${tag}>`;
 }
 
 /* ---------- the tabs ---------- */
 export function overviewPanel(tab) {
   const V = overViewer(), F = GS.factions[V];
-  let h = headerHtml(F.css, `State of ${F.name}`, GS.auto ? `The power you follow, after ${clock(GS.time)} of war` : `After ${clock(GS.time)} of war`) + '<div class="pb">';
+  let h = headerHtml(F.css, `State of ${F.name}`, GS.auto ? `The power you follow · turn ${turnOf(GS.time)}, ${dateOf(GS.time)}` : `Turn ${turnOf(GS.time)}, ${dateOf(GS.time)}`) + '<div class="pb">';
   h += '<div class="seg tabs">' + OVER_TABS.map(([k, n]) => `<button class="${k === tab ? 'on' : ''}" data-act="over:${k}">${n}</button>`).join('') + '</div>';
   h += tab === 'wars' ? warsTab(V) : tab === 'chron' ? chronTab(V) : empireTab(V);
   return h + '</div>';
@@ -86,8 +87,8 @@ export function empireTab(V) {
   const arms = GS.armies.filter((a) => !a.dead && a.owner === V).sort((a, b) => menOf(b.comp) - menOf(a.comp));
   const men = arms.reduce((m, a) => m + menOf(a.comp), 0);
   let h = `<div class="kv"><span class="chip">provinces <b>${provs}</b> of the ${STAND.need} that win</span><span class="chip">disputed <b>${MAP.provinces.filter((P) => P.owner === DISPUTED && holdsIn(P, V)).length}</b></span><span class="chip">cities <b>${majors}</b> and <b>${cities.length - majors}</b> towns</span><span class="chip">${IC.men}<b>${fmtInt(men)}</b> men</span></div>`;
-  h += '<table class="ledger"><thead><tr><th scope="col">Per second</th><th scope="col">Stock</th><th scope="col">Income</th><th scope="col">Upkeep</th><th scope="col">Net</th></tr></thead><tbody>'
-    + RES.map((r) => `<tr><th scope="row">${IC[r]}${r}</th><td>${fmtInt(F.res[r])}</td><td>+${F.inc[r].toFixed(1)}</td><td>−${F.upk[r].toFixed(1)}</td><td class="${F.net[r] < -0.05 ? 'neg' : F.net[r] > 0.05 ? 'pos' : ''}">${fmtRate(F.net[r])}</td></tr>`).join('') + '</tbody></table>';
+  h += '<table class="ledger"><thead><tr><th scope="col">A turn</th><th scope="col">Stock</th><th scope="col">Income</th><th scope="col">Upkeep</th><th scope="col">Net</th></tr></thead><tbody>'
+    + RES.map((r) => `<tr><th scope="row">${IC[r]}${r}</th><td>${fmtInt(F.res[r])}</td><td>+${fmt(perTurn(F.inc[r]))}</td><td>−${fmt(perTurn(F.upk[r]))}</td><td class="${F.net[r] < -0.05 ? 'neg' : F.net[r] > 0.05 ? 'pos' : ''}">${fmtTurnRate(F.net[r])}</td></tr>`).join('') + '</tbody></table>';
   if (F.stretch < 0.995) h += `<div class="note">Overstretched: every income at <b>${Math.round(F.stretch * 100)}%</b>, and conquests settle slowly.</div>`;
   h += `<div class="sect">Armies · ${arms.length}</div>`;
   h += arms.length ? '<div class="list">' + arms.map((a) => `<button class="li" data-act="${GS.auto || a.owner !== ME ? 'watch' : 'selarmy'}:${a.id}"><b>${fmtInt(menOf(a.comp))}</b>${starsOf(a) ? `<span class="st">${'★'.repeat(starsOf(a))}</span>` : ''}<span class="what">${armyStatus(a)}</span>${a.state === 'battle' ? '<em class="bad">in battle</em>' : a.state === 'rout' ? '<em class="bad">routing</em>' : ''}</button>`).join('') + '</div>' : '<div class="note">No army in the field.</div>';
@@ -105,8 +106,8 @@ export function warsTab(V) {
       if (F.id === G.id) { h += '<td class="self"></td>'; continue; }
       if (!F.alive || !G.alive) { h += '<td class="gone" title="Wiped out">–</td>'; continue; }
       const R = relOf(F.id, G.id);
-      if (R.war) h += `<td class="war" title="${F.name} and ${G.name}: at war for ${clock(GS.time - R.since)}">${GLYPH.swords}<small>${clock(GS.time - R.since)}</small></td>`;
-      else if (R.lock > GS.time) h += `<td class="treaty" title="${F.name} and ${G.name}: ${GS.time < PEACE_TIME ? 'opening truce' : 'treaty'}, ${clock(R.lock - GS.time)} left">${GLYPH.dove}<small>${clock(R.lock - GS.time)}</small></td>`;
+      if (R.war) h += `<td class="war" title="${F.name} and ${G.name}: at war for ${turnsDone(GS.time - R.since)}">${GLYPH.swords}<small>${Math.floor((GS.time - R.since) / TURN_TIME + 1e-6)}</small></td>`;
+      else if (R.lock > GS.time) h += `<td class="treaty" title="${F.name} and ${G.name}: ${GS.time < PEACE_TIME ? 'opening truce' : 'treaty'}, ${turnsTxt(R.lock - GS.time)} left">${GLYPH.dove}<small>${turnsIn(R.lock - GS.time)}</small></td>`;
       else h += `<td class="peace" title="${F.name} and ${G.name}: at peace, no treaty">·</td>`;
     }
     h += '</tr>';
@@ -117,7 +118,7 @@ export function warsTab(V) {
   h += `<div class="sect">${wars.length ? `Wars · ${wars.length}` : 'No war right now'}</div>`;
   for (const [f, g] of wars) {
     const R = relOf(f, g), mine = !GS.auto && (f === ME || g === ME), other = f === ME ? g : f;
-    h += `<${mine ? `button data-act="dip:${other}"` : 'div'} class="wr"><div>${sw(f)}${fname(f)} and ${fname(g)}${sw(g)}<em>${clock(GS.time - R.since)}</em></div>`
+    h += `<${mine ? `button data-act="dip:${other}"` : 'div'} class="wr"><div>${sw(f)}${fname(f)} and ${fname(g)}${sw(g)}<em>${turnsDone(GS.time - R.since)}</em></div>`
       + `<small>War score <b>${Math.round(R.sc[f] || 0)}</b> to <b>${Math.round(R.sc[g] || 0)}</b>. ${FACTIONS[f].name} is ${wearyWord(R.w[f] || 0)}, ${FACTIONS[g].name} ${wearyWord(R.w[g] || 0)}.</small></${mine ? 'button' : 'div'}>`;
   }
   h += '<table class="ledger roster"><thead><tr><th scope="col">Power</th><th scope="col">Provinces</th><th scope="col">Disputed</th><th scope="col">Men</th></tr></thead><tbody>'

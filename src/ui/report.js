@@ -2,8 +2,9 @@ import { pairKey } from '../game/diplomacy.js';
 import { cityOf } from '../game/chronicle.js';
 import { STAND } from '../game/standing.js';
 import { GS, MAP } from '../game/state.js';
-import { FACTIONS, PLAYER } from '../game/data.js';
-import { clock, FCHART, fmt, fmtInt, GLYPH } from './format.js';
+import { FACTIONS, PLAYER, TURN_TIME } from '../game/data.js';
+import { FCHART, fmt, fmtInt, GLYPH } from './format.js';
+import { turnOf } from '../game/turns.js';
 import { deadOf, eventInfo, eventRow } from './overview.js';
 
 /* =========================================================
@@ -54,7 +55,7 @@ export function reportData() {
 /* ---------- sections ---------- */
 export function finalHtml(R) {
   return '<ol class="rep-final">' + R.rank.map((F, i) => {
-    const fate = F.id === R.winner ? 'Wins the war' : !F.alive ? `Wiped out at ${clock(F.eliminatedAt)}` : `${i + 1}${['st', 'nd', 'rd', 'th'][Math.min(i, 3)]} place`;
+    const fate = F.id === R.winner ? 'Wins the war' : !F.alive ? `Wiped out in turn ${turnOf(F.eliminatedAt)}` : `${i + 1}${['st', 'nd', 'rd', 'th'][Math.min(i, 3)]} place`;
     const you = !GS.auto && F.id === PLAYER;
     return `<li class="${F.id === R.winner ? 'win' : ''}${F.alive ? '' : ' dead'}" style="--fc:${F.css}"><i></i><div><b>${F.name}${you ? ' <small>(you)</small>' : ''}</b><span>${fate}</span></div><em><b>${provinces(F.id)}</b> provinces<br>${citiesOf(F.id)} cities and towns</em></li>`;
   }).join('') + '</ol>';
@@ -63,7 +64,7 @@ const niceStep = (max, n) => { const raw = max / n, p = 10 ** Math.floor(Math.lo
 const ticks = (max, n) => { const st = niceStep(max, n), out = [0]; while (out[out.length - 1] < max - 1e-6) out.push(out[out.length - 1] + st); return { list: out, top: out[out.length - 1] }; };
 export function lineChart(id, W, H, S, opt) {
   // the right margin holds the direct labels: as wide as the longest one (about 6.6 px a character at 12 px)
-  const tag = (L) => (L.fell ? `fell ${clock(L.fellAt)}` : opt.fmtY(L.ys[L.ys.length - 1]));
+  const tag = (L) => (L.fell ? `fell in turn ${turnOf(L.fellAt)}` : opt.fmtY(L.ys[L.ys.length - 1]));
   const longest = Math.max(10, ...S.filter((L) => L.xs.length).map((L) => (L.name + ' ' + tag(L)).length));
   const m = { l: 38, r: Math.min(Math.round(W * 0.4), 24 + Math.ceil(longest * 6.6)), t: 14, b: opt.marks ? 40 : 26 };
   const pw = Math.max(60, W - m.l - m.r), ph = H - m.t - m.b, T = opt.T;
@@ -71,8 +72,9 @@ export function lineChart(id, W, H, S, opt) {
   const X = (t) => m.l + (t / T) * pw, Y = (v) => m.t + ph - (v / yMax) * ph;
   let s = `<svg class="ch" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${opt.label}">`;
   for (const v of yt.list) s += `<line class="gr" x1="${m.l}" x2="${m.l + pw}" y1="${Y(v)}" y2="${Y(v)}"/><text class="yl" x="${m.l - 7}" y="${Y(v) + 4}">${opt.fmtY(v)}</text>`;
-  const xs = T > 1800 ? 600 : T > 900 ? 300 : T > 360 ? 120 : 60;
-  for (let t = 0; t <= T + 1; t += xs) s += `<text class="xl" x="${X(t)}" y="${m.t + ph + 16}">${clock(t)}</text>`;
+  // the time axis in turns played: every 2, 5, 10 or 20 (the first label says what the numbers are)
+  const xs = T > 1800 ? 600 : T > 900 ? 300 : T > 360 ? 150 : 60;
+  for (let t = xs; t <= T + 1; t += xs) s += `<text class="xl" x="${X(t)}" y="${m.t + ph + 16}">${t === xs ? 'turn ' : ''}${Math.round(t / TURN_TIME)}</text>`;
   s += `<line class="ax" x1="${m.l}" x2="${m.l + pw}" y1="${Y(0)}" y2="${Y(0)}"/>`;
   if (opt.ref) {
     const pts = []; for (let t = 0; t <= T; t += Math.max(5, T / 120)) pts.push(`${X(t).toFixed(1)},${Y(opt.ref(t)).toFixed(1)}`);
@@ -81,9 +83,9 @@ export function lineChart(id, W, H, S, opt) {
   }
   if (opt.marks) for (const e of opt.marks) {
     const x = X(e.t), y = m.t + ph + 27;
-    s += e.k === 'war' ? `<path class="mk war" d="M${x - 4} ${y + 3}h8l-4-7z"><title>${clock(e.t)}: ${strip(eventInfo(e).html)}</title></path>`
-      : e.k === 'peace' ? `<circle class="mk peace" cx="${x}" cy="${y}" r="3.6"><title>${clock(e.t)}: ${strip(eventInfo(e).html)}</title></circle>`
-        : `<path class="mk fall" d="M${x - 3.5} ${y - 3.5}l7 7M${x + 3.5} ${y - 3.5}l-7 7"><title>${clock(e.t)}: ${strip(eventInfo(e).html)}</title></path>`;
+    s += e.k === 'war' ? `<path class="mk war" d="M${x - 4} ${y + 3}h8l-4-7z"><title>Turn ${turnOf(e.t)}: ${strip(eventInfo(e).html)}</title></path>`
+      : e.k === 'peace' ? `<circle class="mk peace" cx="${x}" cy="${y}" r="3.6"><title>Turn ${turnOf(e.t)}: ${strip(eventInfo(e).html)}</title></circle>`
+        : `<path class="mk fall" d="M${x - 3.5} ${y - 3.5}l7 7M${x + 3.5} ${y - 3.5}l-7 7"><title>Turn ${turnOf(e.t)}: ${strip(eventInfo(e).html)}</title></path>`;
   }
   for (const L of S) if (L.xs.length > 1) s += `<polyline class="ln" stroke="${L.color}" points="${L.xs.map((t, i) => `${X(t).toFixed(1)},${Y(L.ys[i]).toFixed(1)}`).join(' ')}"/>`;
   // direct labels in the right margin, level with each line's last value (and the victory mark), nudged apart so none overlap
@@ -105,16 +107,18 @@ export function lineChart(id, W, H, S, opt) {
   REP.charts[id] = { m, pw, ph, T, yMax, S, X, Y, fmtY: opt.fmtY, marks: !!opt.marks };
   return s;
 }
+// a stretch of the war in turns, rounded: "3 turns", "under a turn"
+export const turnsOf = (s) => { const n = Math.round(s / TURN_TIME); return n >= 1 ? `${n} turn${n > 1 ? 's' : ''}` : 'under a turn'; };
 const strip = (h) => h.replace(/<[^>]+>/g, '');
 const legend = (S) => '<div class="lg">' + S.map((L) => `<span><i style="background:${L.color}"></i>${L.name}</span>`).join('') + '</div>';
 export function chartTable(S, T, fmtY) {
-  const step = T > 1800 ? 120 : 60, rows = [];
+  const step = T > 1800 ? 10 * TURN_TIME : 5 * TURN_TIME, rows = [];
   for (let t = 0; t <= T + step - 1; t += step) {
     const tt = Math.min(t, T);
-    rows.push(`<tr><th scope="row">${clock(tt)}</th>${S.map((L) => { let k = -1; for (let i = 0; i < L.xs.length; i++) if (L.xs[i] <= tt + 0.5) k = i; return `<td>${k < 0 || (L.fell && tt > L.xs[L.xs.length - 1] + 1) ? '–' : fmtY(L.ys[k])}</td>`; }).join('')}</tr>`);
+    rows.push(`<tr><th scope="row">${Math.round(tt / TURN_TIME)}</th>${S.map((L) => { let k = -1; for (let i = 0; i < L.xs.length; i++) if (L.xs[i] <= tt + 0.5) k = i; return `<td>${k < 0 || (L.fell && tt > L.xs[L.xs.length - 1] + 1) ? '–' : fmtY(L.ys[k])}</td>`; }).join('')}</tr>`);
     if (tt >= T) break;
   }
-  return `<div class="tblwrap"><table class="ledger"><thead><tr><th scope="col">Time</th>${S.map((L) => `<th scope="col">${L.name}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+  return `<div class="tblwrap"><table class="ledger"><thead><tr><th scope="col">Turns played</th>${S.map((L) => `<th scope="col">${L.name}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 }
 export function chartBlock(id, title, sub, W, H, S, opt) {
   const tbl = REP.table[id], hx = opt.h || 'h3';
@@ -151,7 +155,7 @@ export const ECON_ROWS = [
     ['Walls, improvements and forts', (s) => s.sBuild], ['Bought at the market, in gold', (s) => s.mBuy], ['Tribute paid, in gold', (s) => s.tribP],
   ]],
   ['Received', [['Sold at the market, in gold', (s) => s.mSell], ['Tribute received, in gold', (s) => s.tribR]]],
-  ['Lost', [['Land income lost to plunder', (s) => s.plund], ['Time with empty granaries', (s) => s.starveT, 'time'], ['Time with soldiers unpaid', (s) => s.unpaidT, 'time']]],
+  ['Lost', [['Land income lost to plunder', (s) => s.plund], ['Turns with empty granaries', (s) => s.starveT, 'time'], ['Turns with soldiers unpaid', (s) => s.unpaidT, 'time']]],
   ['Left at the end', [['Gold in the treasury', (s, F) => F.res.gold], ['Food, wood and stone in store', (s, F) => F.res.food + F.res.wood + F.res.stone]]],
 ];
 export const earnedOf = (s) => s.eGold + s.eFood + s.eWood + s.eStone;
@@ -171,7 +175,7 @@ export function econInsights(ids) {
   const p = top((f) => S[f].plund);
   if (S[p].plund >= 50) out.push(`${name(p)} suffered most from plunder, losing ${fmtInt(S[p].plund)} of its land income.`);
   const h = top((f) => S[f].starveT + S[f].unpaidT), ht = S[h].starveT + S[h].unpaidT;
-  if (ht >= 20) out.push(`${name(h)} spent ${clock(ht)} with ${S[h].starveT >= S[h].unpaidT ? 'its granaries empty' : 'its soldiers unpaid'}${S[h].starveT > 0 && S[h].unpaidT > 0 ? ' or short of the other' : ''}, and its armies melted away.`);
+  if (ht >= TURN_TIME) out.push(`${name(h)} spent ${turnsOf(ht)} with ${S[h].starveT >= S[h].unpaidT ? 'its granaries empty' : 'its soldiers unpaid'}${S[h].starveT > 0 && S[h].unpaidT > 0 ? ' or short of the other' : ''}, and its armies melted away.`);
   return out.join(' ');
 }
 export function econHtml(R, W, phone) {
@@ -179,8 +183,8 @@ export function econHtml(R, W, phone) {
   let h = `<section class="rep-econ"><h3>Economy</h3><p class="rep-sub">${econInsights(ids)}</p>`;
   if (R.inc.some((L) => L.xs.length > 1)) {
     const maxInc = Math.max(5, ...R.inc.flatMap((L) => L.ys));
-    h += chartBlock('inc', 'Income per second', 'Gold, food, wood and stone coming in, added up, before soldiers\' pay and food.', W, phone ? 170 : 200, R.inc,
-      { T: R.T, max: maxInc, fmtY: (v) => String(Math.round(v * 10) / 10), label: 'Income per second of each power over time', h: 'h4' });
+    h += chartBlock('inc', 'Income per turn', 'Gold, food, wood and stone coming in, added up, before soldiers\' pay and food.', W, phone ? 170 : 200, R.inc,
+      { T: R.T, max: maxInc, fmtY: (v) => fmt(v * TURN_TIME), label: 'Income per turn of each power over the war', h: 'h4' });
   }
   h += '<div class="tblwrap"><table class="ledger econ"><thead><tr><th></th>' + ids.map((f) => `<th scope="col" class="${!GS.auto && f === PLAYER ? 'me' : ''}">${sw(f)}${FACTIONS[f].name}</th>`).join('') + '</tr></thead><tbody>';
   for (const [group, rows] of ECON_ROWS) {
@@ -189,7 +193,7 @@ export function econHtml(R, W, phone) {
       const gone = (f) => group === 'Left at the end' && !GS.factions[f].alive;   // wiped out: nothing left to count
       const vals = ids.map((f) => (gone(f) ? 0 : Math.max(0, get(S[f], GS.factions[f])))), top = Math.max(...vals);
       h += `<tr class="${kind === 'total' ? 'total' : ''}"><th scope="row">${label}</th>` + vals.map((v, i) => {
-        const txt = gone(ids[i]) ? '–' : kind === 'time' ? (v >= 1 ? clock(v) : '–') : fmtInt(v), w = top > 0 ? (v / top) * 100 : 0;
+        const txt = gone(ids[i]) ? '–' : kind === 'time' ? (v >= 1 ? turnsOf(v) : '–') : fmtInt(v), w = top > 0 ? (v / top) * 100 : 0;
         return `<td class="${!GS.auto && ids[i] === PLAYER ? 'me' : ''}">${txt}<i class="cb" style="width:${w.toFixed(1)}%"></i></td>`;
       }).join('') + '</tr>';
     }
@@ -206,11 +210,11 @@ export function warsHtml(R) {
       : w.how === 'fall' ? `Ended when ${FACTIONS[w.fell].name} was wiped out.` : 'Still being fought when the war ended.';
     const took = [w.f, w.g].filter((f) => w.took[f]).map((f) => `${FACTIONS[f].name} took ${w.took[f]} cit${w.took[f] > 1 ? 'ies' : 'y'}`);
     const cost = w.battles ? `${w.battles} battle${w.battles > 1 ? 's' : ''}, ${fmtInt(w.dead[w.f])} ${F.adj} and ${fmtInt(w.dead[w.g])} ${G.adj} dead.` : 'No battle was fought.';
-    h += `<div class="gw"><div class="gl">${sw(w.f)}<b>${F.name}</b> on ${sw(w.g)}<b>${G.name}</b><em>${clock(w.start)} to ${w.end == null ? 'the end' : clock(w.end)}</em></div>`
+    h += `<div class="gw"><div class="gl">${sw(w.f)}<b>${F.name}</b> on ${sw(w.g)}<b>${G.name}</b><em>turn ${turnOf(w.start)} to ${w.end == null ? 'the end' : turnOf(w.end)}</em></div>`
       + `<div class="gt"><i style="left:min(${pct(w.start)}, calc(100% - 3px));width:max(3px, ${pct(end - w.start)})"><b style="background:${FCHART[w.f]}"></b><b style="background:${FCHART[w.g]}"></b></i>${w.how === 'peace' ? `<span class="ge peace" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.dove}</span>` : w.how === 'fall' ? `<span class="ge fall" style="left:clamp(9px, ${pct(end)}, calc(100% - 9px))">${GLYPH.skull}</span>` : ''}</div>`
       + `<p>${w.broke ? `${F.name} broke a treaty to start it. ` : ''}${how} ${took.length ? took.join(', ') + '. ' : ''}${cost}</p></div>`;
   }
-  return h + `<div class="gw scale"><div></div><div class="gs"><span>0:00</span><span>${clock(T)}</span></div></div></div></section>`;
+  return h + `<div class="gw scale"><div></div><div class="gs"><span>turn 1</span><span>turn ${turnOf(T)}</span></div></div></div></section>`;
 }
 export function momentsHtml() {
   const C = GS.chron;
@@ -263,7 +267,7 @@ export function chartHover(id, svg, clientX) {
   const prev = k > 0 ? H[k - 1][0] : -1;
   const evs = C.marks ? GS.chron.filter((e) => (e.k === 'war' || e.k === 'peace' || e.k === 'fall') && e.t > prev && e.t <= tk + 0.5).slice(0, 3) : [];
   const tt = svg.parentNode.querySelector('.ctip');
-  tt.innerHTML = `<b>${clock(tk)}</b>` + vals.map(([L, v]) => `<div><i style="background:${L.color}"></i>${L.name}<em>${C.fmtY(v)}</em></div>`).join('')
+  tt.innerHTML = `<b>Turn ${turnOf(tk)}</b>` + vals.map(([L, v]) => `<div><i style="background:${L.color}"></i>${L.name}<em>${C.fmtY(v)}</em></div>`).join('')
     + (id === 'pts' ? `<div class="need">Needed to win<em>${STAND.need}</em></div>` : '') + evs.map((e) => `<p>${eventInfo(e).html}</p>`).join('');
   tt.classList.remove('hidden');
   const px = (x / (svg.viewBox.baseVal.width)) * r.width, w = tt.offsetWidth;

@@ -2,11 +2,12 @@ import { atWar, relOf, revoltRisk, treatyOn } from '../game/diplomacy.js';
 import { knowsArmy } from '../game/sight.js';
 import { placesOf, STAND } from '../game/standing.js';
 import { GS, MAP, menOf } from '../game/state.js';
-import { ECON, FACTIONS, hasImp, PEACE_TIME, pctOff } from '../game/data.js';
+import { ECON, FACTIONS, hasImp, PEACE_TIME, pctOff, TURN_TIME } from '../game/data.js';
+import { turnsTxt } from '../game/turns.js';
 import { sideMen } from '../game/battles.js';
 import { plunderer } from '../game/economy.js';
 import { nearestCity } from '../game/armies.js';
-import { clock, fmt, GLYPH } from './format.js';
+import { fmt, GLYPH, perTurn } from './format.js';
 
 /* =========================================================
    Dispatches: what needs the attention of power V right now.
@@ -15,9 +16,9 @@ import { clock, fmt, GLYPH } from './format.js';
    ========================================================= */
 export const SEV_ORDER = { bad: 0, warn: 1, good: 2, info: 3 };
 export const NEAR_CITY = 8;        // an enemy army this close to a city is a threat to it
-export const RUNWAY = 90;          // warn when food or gold runs out within this many seconds
+export const RUNWAY = 3 * TURN_TIME;   // warn when food or gold runs out within three turns
 export const NEAR_VICTORY = 2;     // warn when a power is this many provinces from victory
-export const UNREST_RISK = 0.03;   // warn when a city's chance of revolt passes 3% a minute
+export const UNREST_RISK = 0.015;   // warn when a city's chance of revolt passes 1.5% a turn (3% a minute of old)
 
 export function computeAlerts(V) {
   const out = [], F = GS.factions[V];
@@ -66,15 +67,15 @@ export function computeAlerts(V) {
   // food and gold
   const runway = (r) => (F.net[r] < -0.05 ? F.res[r] / -F.net[r] : Infinity);
   if (F.starving) add('bad', 'grain', 'Granaries empty: armies starve', '', 'over:empire');
-  else if (runway('food') < RUNWAY) add('warn', 'grain', 'Food runs out', clock(runway('food')), 'over:empire', `Spending ${(-F.net.food).toFixed(1)} food a second more than comes in`);
+  else if (runway('food') < RUNWAY) add('warn', 'grain', 'Food runs out', `in ${turnsTxt(runway('food'))}`, 'over:empire', `Spending ${fmt(perTurn(-F.net.food))} food a turn more than comes in`);
   if (F.unpaid) add('bad', 'coin', 'Treasury empty: soldiers desert', '', 'over:empire');
-  else if (runway('gold') < RUNWAY) add('warn', 'coin', 'Gold runs out', clock(runway('gold')), 'over:empire', `Spending ${(-F.net.gold).toFixed(1)} gold a second more than comes in`);
+  else if (runway('gold') < RUNWAY) add('warn', 'coin', 'Gold runs out', `in ${turnsTxt(runway('gold'))}`, 'over:empire', `Spending ${fmt(perTurn(-F.net.gold))} gold a turn more than comes in`);
   // unrest in conquered cities with no garrison and no temple
-  const risk = (c) => (c.capital || c.loyal >= 0.5 || hasImp(c, 'temple') || GS.armies.some((a) => !a.dead && a.owner === V && Math.abs(a.x - c.x) < 3 && Math.abs(a.y - c.y) < 3) ? 0 : revoltRisk(c, F) * 60);
+  const risk = (c) => (c.capital || c.loyal >= 0.5 || hasImp(c, 'temple') || GS.armies.some((a) => !a.dead && a.owner === V && Math.abs(a.x - c.x) < 3 && Math.abs(a.y - c.y) < 3) ? 0 : revoltRisk(c, F) * TURN_TIME);
   const restless = mine.map((c) => [c, risk(c)]).filter(([, r]) => r >= UNREST_RISK).sort((a, b) => b[1] - a[1]);
   if (restless.length) {
     const [w, r] = restless[0];
-    add('warn', 'unrest', restless.length === 1 ? `Unrest in <b>${w.name}</b>` : `Unrest in ${restless.length} cities`, `${Math.round(r * 100)}%/min`, `city:${w.id}`, `${w.name} may revolt (about ${Math.round(r * 100)}% a minute): station troops there or build a temple`);
+    add('warn', 'unrest', restless.length === 1 ? `Unrest in <b>${w.name}</b>` : `Unrest in ${restless.length} cities`, `${Math.round(r * 100)}% a turn`, `city:${w.id}`, `${w.name} may revolt (about ${Math.round(r * 100)}% a turn): station troops there or build a temple`);
   }
   // the race for victory
   const need = STAND.need;
@@ -92,11 +93,11 @@ export function computeAlerts(V) {
     add('good', 'tower', `Take ${left[0].kind === 'fort' ? 'the fort' : `<b>${x.name}</b>`} to win <b>${P.name}</b>`, '', left[0].kind === 'fort' ? `spot:${x.x}:${x.y}` : `city:${x.id}`, `Every other place in ${P.name} is yours`);
   }
   // truce and treaties running out
-  if (GS.time < PEACE_TIME) add('info', 'dove', 'Opening truce', `${clock(PEACE_TIME - GS.time)} left`, 'over:wars', 'Nobody fights until it ends, unless someone strikes first');
+  if (GS.time < PEACE_TIME) add('info', 'dove', 'Opening truce', `${turnsTxt(PEACE_TIME - GS.time)} left`, 'over:wars', 'Nobody fights until it ends, unless someone strikes first');
   else for (const G of GS.factions) {
     if (!G.alive || G.id === V || !treatyOn(V, G.id)) continue;
     const left = relOf(V, G.id).lock - GS.time;
-    if (left < 30) add('info', 'dove', `Treaty with <b>${G.name}</b> ends`, clock(left), GS.auto ? 'over:wars' : `dip:${G.id}`);
+    if (left < TURN_TIME + 1) add('info', 'dove', `Treaty with <b>${G.name}</b> ends`, 'this turn', GS.auto ? 'over:wars' : `dip:${G.id}`);
   }
   return out.sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev]);
 }

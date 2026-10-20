@@ -47,7 +47,7 @@ export function directorPick() {
 }
 export function updateDirector(rdt) {
   if (!DIR.on || UI.mode !== 'play' || GS.over) return;
-  if (GS.speed > 0) DIR.hold -= rdt;
+  if (GS.speed > 0) DIR.hold -= rdt;   // autoplay: between turns too (they follow on quickly)
   let T = DIR.tgt;
   if (T && T.kind === 'army' && T.ref.dead && T.ref.mergedInto && !T.ref.mergedInto.dead) T.ref = T.ref.mergedInto;
   const valid = T && (T.kind === 'battle' ? !T.ref.done : T.kind === 'army' ? !T.ref.dead : true);

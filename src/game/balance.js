@@ -51,7 +51,7 @@ export const BALANCE = {
     "fort": { "cost": { "gold": 80, "food": 0, "wood": 120, "stone": 200 }, "time": 15, "max": 220, "walls": 2, "guard": 6 }
   },
   "perks": {
-    "rome": { "build": 0.67, "buildTime": 0.6 },
+    "rome": { "build": 0.8, "buildTime": 0.6 },
     "carthage": { "costMul": { "food": 0.65 }, "feed": 0.65, "market": { "buy": 110, "sell": 95 }, "port": 0.6 },
     "gaul": { "recruitTime": 0.6, "unitCost": 0.8 },
     "egypt": { "nile": 1.3 }

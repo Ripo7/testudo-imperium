@@ -5,11 +5,12 @@ import { cellToWorld } from '../render/world.js';
 import { pathLines, ringFor, selRings, setPathLine, targetRing } from '../render/overlays.js';
 import { CAM, projectCell } from '../render/camera.js';
 import { FIG_MEN } from '../render/crowds.js';
-import { FACTIONS } from '../game/data.js';
+import { FACTIONS, TURN_TIME } from '../game/data.js';
+import { pathPointsAt } from '../game/armies.js';
 import { DISPUTED } from '../game/standing.js';
 import { sideMen } from '../game/battles.js';
-import { etaShort, fcss, fmt } from './format.js';
-import { _pp, ME, UI } from './state.js';
+import { etaTurns, fcss, fmt } from './format.js';
+import { _pp, ME, turnLeft, UI } from './state.js';
 
 /* =========================================================
    Map labels
@@ -18,7 +19,7 @@ export const $labels = $('labels');
 export const LBL = { prov: [], city: [], army: new Map(), battle: new Map() };
 export function mkLabel(cls, html) { const el = document.createElement('div'); el.className = 'lb ' + cls; el.innerHTML = html; $labels.appendChild(el); return { el, last: {} }; }
 export function buildMapLabels() {
-  $labels.innerHTML = ''; LBL.prov = []; LBL.city = []; LBL.army.clear(); LBL.battle.clear(); LBL.flag = null;
+  $labels.innerHTML = ''; LBL.prov = []; LBL.city = []; LBL.army.clear(); LBL.battle.clear(); LBL.flag = null; PIPS.list = []; PIPS.cache.clear();
   for (const P of MAP.provinces) LBL.prov.push(Object.assign(mkLabel('pv', P.name), { P }));
   for (const c of MAP.cities) LBL.city.push(Object.assign(mkLabel('ct' + (c.major ? ' major' : ''), ''), { c }));
 }
@@ -101,6 +102,40 @@ export function updateLabels() {
   }
   for (const [id, L] of LBL.battle) if (!seenB.has(id)) { L.el.remove(); LBL.battle.delete(id); }
   updateStandard();
+  updatePips();
+}
+/* ---------- how far a march gets: a numbered pip where the army will stand at the end of this turn (1), the next (2)... ---------- */
+export const PIP_MAX = 6;
+export const PIPS = { list: [], cache: new Map() };
+// the marches to mark: the order a touch has planned, the selected armies' (and in autoplay, the army inspected)
+export function pipMarches() {
+  const out = [], o = UI.order;
+  if (o && o.ok && o.path && !o.lead.dead) out.push({ key: 'plan:' + o.seq, a: o.lead, path: o.path, pi: 0, foe: !!(o.h && !(o.h.kind === 'city' && o.h.ref.owner === ME)) });
+  for (const a of UI.sel) if (!a.dead && a.owner === ME && a.path && a.pi < a.path.length) out.push({ key: a.id + ':' + a.pathVersion, a, path: a.path, pi: a.pi, foe: !!(a.target && a.target.ref.owner !== a.owner) });
+  if (GS.auto && UI.selEnemy && !UI.selEnemy.dead && UI.selEnemy.path) out.push({ key: 'e' + UI.selEnemy.id + ':' + UI.selEnemy.pathVersion, a: UI.selEnemy, path: UI.selEnemy.path, pi: UI.selEnemy.pi, foe: false });
+  return out;
+}
+export function updatePips() {
+  const left = turnLeft(), at = Array.from({ length: PIP_MAX }, (_, k) => left + k * TURN_TIME);
+  let n = 0;
+  for (const m of pipMarches()) {
+    // recomputed as the march goes on (pi) and the turn runs down (a quarter of a second at a time)
+    const ck = m.key + ':' + m.pi + ':' + Math.round(left * 4);
+    let pts = PIPS.cache.get(m.key);
+    if (!pts || pts.ck !== ck) { pts = pathPointsAt(m.a, m.path, m.pi, at); pts.ck = ck; PIPS.cache.set(m.key, pts); }
+    pts.forEach(([x, y], k) => {
+      let L = PIPS.list[n];
+      if (!L) { L = PIPS.list[n] = mkLabel('pip', ''); }
+      n++;
+      setHtml(L, 'h', String(k + 1));
+      const cls = 'lb pip' + (k === 0 ? ' now' : '') + (m.foe ? ' foe' : '');
+      if (L.last.cls !== cls) { L.last.cls = cls; L.el.className = cls; }
+      L.el.title = k === 0 ? 'Where it will be when this turn ends' : `Where it will be at the end of turn ${k + 1} from now`;
+      placeLabel(L, x, y, 0.25, 9);
+    });
+  }
+  for (let i = n; i < PIPS.list.length; i++) { const L = PIPS.list[i]; if (L.last.vis !== false) { L.el.style.display = 'none'; L.last.vis = false; } }
+  if (PIPS.cache.size > 40) PIPS.cache.clear();
 }
 // the standard planted where a planned march (touch) would send the selected armies, with the march time
 // (an order aimed at a target rings the target instead: see updateSelectionVisuals)
@@ -111,7 +146,7 @@ export function updateStandard() {
   if (!o) { if (L && L.last.vis !== false) { L.el.style.display = 'none'; L.last.vis = false; } return; }
   if (!L) { L = LBL.flag = mkLabel('flag', ''); L.last.vis = true; }
   // a new order plants the standard again (its drop animation)
-  if (L.last.seq !== o.seq) { L.last.seq = o.seq; L.el.innerHTML = `${STANDARD}<span>${o.ok ? etaShort(o.eta) : 'no way'}</span>`; L.el.className = 'lb flag' + (o.ok ? '' : ' no'); }
+  if (L.last.seq !== o.seq) { L.last.seq = o.seq; L.el.innerHTML = `${STANDARD}<span>${o.ok ? etaTurns(o.eta, turnLeft()) : 'no way'}</span>`; L.el.className = 'lb flag' + (o.ok ? '' : ' no'); }
   placeLabel(L, o.x, o.y, 0.2, 2);
 }
 
