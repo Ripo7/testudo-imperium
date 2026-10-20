@@ -9,7 +9,7 @@ import { DETAIL_TEX, FH, FW, heightAt, RS } from './terrain.js';
 import { clearFloraAround, FLORA_U } from './vegetation.js';
 import { riverLines } from './water.js';
 import { cityParts, CULTURE_OF_POWER, planCity, wallParts } from './citygen.js';
-import { startingCapitals } from '../game/campaign.js';
+import { startingProvinces } from '../game/campaign.js';
 
 /* =========================================================
    Cities, walls, forts, roads, bridges, farmland, ports.
@@ -233,18 +233,36 @@ export function buildFields() {
 }
 
 /* ---------- the city itself: streets, houses and landmarks (render/citygen.js) ---------- */
-// each region builds in the style of the power that starts nearest to it; the style stays when the city changes hands
+// Each province builds in one style: a power's starting provinces in its own, every other province in the style of
+// the starting province nearest to it over land (province to province, from major city to major city). The style
+// stays when a city changes hands.
 export let cultureCache = null;
-export function cultureOf(c) {
-  if (!cultureCache || cultureCache.map !== MAP) {
-    const caps = startingCapitals(MAP.seed).map((p) => MAP.cities[p.major]);
-    cultureCache = { map: MAP, list: MAP.cities.map((d) => {
-      let best = 0, bd = Infinity;
-      caps.forEach((k, f) => { const dd = Math.hypot(k.x - d.x, k.y - d.y); if (dd < bd) { bd = dd; best = f; } });
-      return CULTURE_OF_POWER[best];
-    }) };
+export function provinceCultures() {
+  const P = MAP.provinces, at = (p) => MAP.cities[p.major], power = new Array(P.length).fill(-1), dist = new Array(P.length).fill(Infinity);
+  startingProvinces(MAP.seed).forEach((list, f) => { for (const p of list) { power[p.id] = f; dist[p.id] = 0; } });
+  // Dijkstra from every starting province at once
+  const done = new Array(P.length).fill(false);
+  for (;;) {
+    let i = -1;
+    for (let k = 0; k < P.length; k++) if (!done[k] && dist[k] < Infinity && (i < 0 || dist[k] < dist[i])) i = k;
+    if (i < 0) break;
+    done[i] = true;
+    for (const j of P[i].neighbors) {
+      const d = dist[i] + Math.hypot(at(P[i]).x - at(P[j]).x, at(P[i]).y - at(P[j]).y);
+      if (d < dist[j]) { dist[j] = d; power[j] = power[i]; }
+    }
   }
-  return cultureCache.list[c.id];
+  // a province cut off from all of them (an island): the nearest starting capital as the crow flies
+  const caps = startingProvinces(MAP.seed).map((list) => at(list[0]));
+  for (const p of P) if (power[p.id] < 0) {
+    let bd = Infinity;
+    caps.forEach((k, f) => { const d = Math.hypot(k.x - at(p).x, k.y - at(p).y); if (d < bd) { bd = d; power[p.id] = f; } });
+  }
+  return power.map((f) => CULTURE_OF_POWER[f]);
+}
+export function cultureOf(c) {
+  if (!cultureCache || cultureCache.map !== MAP) cultureCache = { map: MAP, byProvince: provinceCultures() };
+  return cultureCache.byProvince[c.prov];
 }
 // the direction of the nearest open sea from a port
 export function portAngle(c) {

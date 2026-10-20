@@ -64,8 +64,12 @@ export default async function smoke() {
           return k.imps.every((id) => T.LANDMARKS[id].some((x) => kinds.has(x)) || (id === 'temple' && kinds.has('forum')));
         }).length;
         return { near, far, raised, built: withImps.length, current: T.MAP.cities.every((k) => k.mesh.look === T.cityLook(k)), cultures: [...new Set(T.MAP.cities.map((k) => T.cultureOf(k)))].length,
-          models: Object.keys(T.LANDMARK_URLS).filter((k) => T.MODEL_GEOS[k]).length, of: Object.keys(T.LANDMARK_URLS).length };
+          models: Object.keys(T.LANDMARK_URLS).filter((k) => T.MODEL_GEOS[k]).length, of: Object.keys(T.LANDMARK_URLS).length,
+          // each province in one style, each power's starting provinces in its own
+          styles: T.MAP.provinces.every((p) => new Set([p.major, ...p.small].map((id) => T.cultureOf(T.MAP.cities[id]))).size === 1)
+            && T.startingProvinces(T.MAP.seed).every((list, f) => list.every((p) => T.cultureOf(T.MAP.cities[p.major]) === T.CULTURE_OF_POWER[f])) };
       });
+      check(city.styles, `[${label}] each province builds in one style, and every power's starting provinces in its own`);
       check(city.near && city.far && city.current && city.raised >= city.built * 0.9 && city.cultures === 4, `[${label}] cities in four styles, the full version up close and the light one from afar; ${city.raised} of ${city.built} cities show the improvements they built`);
       check(city.models === city.of, `[${label}] the Blender landmarks loaded (${city.models} of ${city.of})`);
       const view = await page.evaluate(() => {
