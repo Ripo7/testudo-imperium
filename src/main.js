@@ -10,6 +10,8 @@ import { buildEnvironment } from './render/world.js';
 import { updateDust } from './render/overlays.js';
 import { CAM, projectCell, updateCameraRig } from './render/camera.js';
 import { buildCrowdGeos, loadCloseModels, updateCrowds } from './render/crowds.js';
+import { loadLandmarkModels } from './render/landmarkModels.js';
+import { rebuildCities } from './render/cities.js';
 import { simStep } from './game/sim.js';
 import { _pp, UI } from './ui/state.js';
 import { initPanel, renderPanel } from './ui/panel.js';
@@ -30,6 +32,7 @@ initScreens();
 buildEnvironment();
 buildCrowdGeos();
 loadCloseModels();
+loadLandmarkModels(rebuildCities);   // the cities are rebuilt with the Blender landmarks once they arrive
 
 // Start from (in order) the state handed over by a live page update, the save in this browser, or a fresh continent.
 function boot(data) {

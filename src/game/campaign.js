@@ -53,22 +53,8 @@ export function initCampaign(seed, gen) {
   for (const p of MAP.provinces) { p.owner = NEUTRAL; computeProvYield(p); }
   for (const c of MAP.cities) { c.owner = NEUTRAL; c.walls = 0; c.wallBuild = null; c.queue = []; c.capital = false; c.loyal = 1; c.imps = []; c.impBuild = null; computeCityYield(c); }
 
-  // capitals: spread four factions as far apart as possible
-  const P = MAP.provinces, rnd = rng32(seed * 13 + 5);
-  const mc = (p) => MAP.cities[p.major];
-  const big = P.filter((p) => p.cells.length > MAP.landCount / P.length * 0.6);
-  const caps = [big[Math.floor(rnd() * big.length)]];
-  while (caps.length < 4) {
-    let best = null, bd = -1;
-    for (const p of big) {
-      if (caps.includes(p)) continue;
-      const d = Math.min(...caps.map((q) => Math.hypot(mc(p).x - mc(q).x, mc(p).y - mc(q).y)));
-      if (d > bd) { bd = d; best = p; }
-    }
-    caps.push(best);
-  }
-  // deal the four starting spots out at random, so no power always gets the first (random) pick
-  for (let i = caps.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [caps[i], caps[j]] = [caps[j], caps[i]]; }
+  const P = MAP.provinces, mc = (p) => MAP.cities[p.major];
+  const caps = startingCapitals(seed);
   caps.forEach((p, f) => {
     claimProvince(p, f);
     mc(p).capital = true; mc(p).walls = 1;
@@ -86,6 +72,26 @@ export function initCampaign(seed, gen) {
     const a = makeArmy(f, comp, c.x + 1.5, c.y + 1.5);
     a.stance = GS.factions[f].isPlayer ? 'aggr' : 'def';
   });
+}
+/** The four powers' starting provinces, in power order: spread as far apart as possible, then dealt out at random.
+ * Depends only on the map and its seed (the screen uses it too, for each region's building style). */
+export function startingCapitals(seed) {
+  const P = MAP.provinces, rnd = rng32(seed * 13 + 5);
+  const mc = (p) => MAP.cities[p.major];
+  const big = P.filter((p) => p.cells.length > MAP.landCount / P.length * 0.6);
+  const caps = [big[Math.floor(rnd() * big.length)]];
+  while (caps.length < 4) {
+    let best = null, bd = -1;
+    for (const p of big) {
+      if (caps.includes(p)) continue;
+      const d = Math.min(...caps.map((q) => Math.hypot(mc(p).x - mc(q).x, mc(p).y - mc(q).y)));
+      if (d > bd) { bd = d; best = p; }
+    }
+    caps.push(best);
+  }
+  // deal the four starting spots out at random, so no power always gets the first (random) pick
+  for (let i = caps.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [caps[i], caps[j]] = [caps[j], caps[i]]; }
+  return caps;
 }
 export function claimProvince(p, f) {
   p.owner = f;

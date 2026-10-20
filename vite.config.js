@@ -5,6 +5,8 @@ export default defineConfig({
     target: 'es2020',
     // three.js is most of the bundle; keep it in its own chunk so game updates don't re-download it
     rollupOptions: {
+      // the game, and the city lab (every culture's cities side by side, for judging them without playing)
+      input: { main: 'index.html', citylab: 'citylab.html' },
       output: {
         manualChunks: (id) => (id.includes('node_modules/three') ? 'three' : undefined),
       },

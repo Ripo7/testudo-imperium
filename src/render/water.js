@@ -176,8 +176,12 @@ export const RIVER_MAT = new THREE.ShaderMaterial({
     '}',
   ].join('\n'),
 });
-export function buildRivers() {
-  const rnd = rng32(MAP.seed + 77);
+// every river's course as drawn: smoothed, meandering, widening toward the sea;
+// [[x, y, half width, dx, dy (its direction), s (length so far)], ...] in cells
+export let riverCache = null;
+export function riverLines() {
+  if (riverCache && riverCache.map === MAP) return riverCache.lines;
+  const rnd = rng32(MAP.seed + 77), lines = [];
   for (const rv of MAP.rivers) {
     let pts = rv.map((c) => [c % MAP.W, (c / MAP.W) | 0]);
     // gentle meanders (stay inside the carved bed)
@@ -190,17 +194,25 @@ export function buildRivers() {
       }
       np.push(pts[pts.length - 1]); pts = np;
     }
-    const n = pts.length;
-    const verts = [], uvs = [], idx = [];
+    const n = pts.length, line = [];
     let s = 0;
     for (let k = 0; k < n; k++) {
       const [px, py] = pts[Math.max(0, k - 1)], [qx, qy] = pts[Math.min(n - 1, k + 1)];
       let dx = qx - px, dy = qy - py; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
       if (k > 0) s += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
-      const f = k / (n - 1);
       const mea = Math.sin(s * fq + ph) * 0.16 * Math.min(1, k / 6, (n - 1 - k) / 6);
-      const x = pts[k][0] - dy * mea, y = pts[k][1] + dx * mea;
-      const w = 0.17 + 0.33 * f;
+      line.push([pts[k][0] - dy * mea, pts[k][1] + dx * mea, 0.17 + 0.33 * k / (n - 1), dx, dy, s]);
+    }
+    lines.push(line);
+  }
+  riverCache = { map: MAP, lines };
+  return lines;
+}
+export function buildRivers() {
+  for (const line of riverLines()) {
+    const n = line.length, verts = [], uvs = [], idx = [];
+    for (let k = 0; k < n; k++) {
+      const [x, y, w, dx, dy, s] = line[k];
       const wx = x - (MAP.W - 1) / 2, wz = y - (MAP.H - 1) / 2;
       const hl = Math.max(heightAt(x - dy * w, y + dx * w), heightAt(x, y)), hr = Math.max(heightAt(x + dy * w, y - dx * w), heightAt(x, y));
       verts.push(wx - dy * w, Math.max(hl, 0.02) + 0.05, wz + dx * w, wx + dy * w, Math.max(hr, 0.02) + 0.05, wz - dx * w);

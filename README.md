@@ -39,6 +39,7 @@ Then open the address Vite prints (usually http://localhost:5173). Edits to the 
 | `npm test` | Lint, build, then run the test suite in headless Chromium |
 | `npm run balance -- 40` | Play 40 AI-vs-AI wars and report win rates, war length and economy |
 | `npm run audit -- 12` | Count how often every mechanic is used across 12 AI wars |
+| `npm run citylab` | The city lab: every culture's towns, cities and capitals side by side, with improvements and walls to switch on and off |
 
 The browser tests need Chromium once: `npx playwright install chromium`.
 
@@ -46,6 +47,7 @@ The browser tests need Chromium once: `npx playwright install chromium`.
 
 ```
 index.html            page markup: HUD, panels, title and help screens
+citylab.html, lab/    the city lab (a page of its own, built with the game)
 src/
   main.js             boot and the frame loop
   three.js            three.js, set up once (colour management)
@@ -53,11 +55,13 @@ src/
   styles/main.css     all the UI styling (colour tokens at the top)
   assets/fonts/       Marcellus and Alegreya Sans
   assets/units/       close-up unit models (.glb), made by tools/blender
+  assets/landmarks/   the cities' landmark models (.glb), made by tools/blender
   core/               helpers, synthesized audio
   map/generate.js     the continent: relief, biomes, rivers, provinces, cities, roads,
                       bridges, fords and the marching cost of every cell (pure JS)
   render/             everything drawn in 3D: terrain, water, vegetation, cities,
                       soldiers (instanced crowds), overlays, camera, light and clouds
+  render/citygen.js   the city generator; render/city/ holds each culture's rules
   game/               the simulation: factions and units (data.js), armies and pathfinding,
                       battles, economy, standing and victory, diplomacy, AI, fog of war
                       (sight.js), the record of the war (chronicle.js), save & resume
@@ -65,7 +69,7 @@ src/
                       the end-of-war report (report.js), map labels, input, screens,
                       the autoplay camera
 tests/                Node and browser tests (npm test)
-tools/                balance and audit scripts; tools/blender: the soldiers' Blender models
+tools/                balance and audit scripts; tools/blender: the soldiers' and landmarks' Blender models
 ```
 
 The simulation in `src/game` advances in fixed steps (`simStep`) and doesn't depend on rendering, which is what lets the tests and tools play whole wars in seconds with the renderer switched off.
@@ -78,7 +82,8 @@ Saves live in the browser's `localStorage` under `testudo.save.v1`. Only the cha
 
 - **map**: map generation is deterministic and every province has its cities (plain Node).
 - **params**: every balance number has a meaning and bounds, `balance.js` writes back exactly, a value changed at run time reaches the game and its texts, and the battle lab is deterministic.
-- **smoke**: a campaign plays on desktop and phone sizes, every panel (Overview tabs included) renders, the fog hides what it should, the war is recorded and the end-of-war report renders, no console errors.
+- **cities**: the city generator in plain Node: the same city always comes out the same, every culture fills its towns inside the walls, each improvement raises its landmark and only takes the ground of the houses it replaces, the far version is lighter, and every style of wall stands.
+- **smoke**: a campaign plays on desktop and phone sizes, every panel (Overview tabs included) renders, the fog hides what it should, the war is recorded and the end-of-war report renders, cities switch between their two versions and show the improvements they built, the city lab loads, no console errors.
 - **controls**: on a phone, the dock steps through the armies, pauses and changes speed; a tap plans a march and a second tap gives it; a tap on an enemy town shows the odds; a long press adds an army to the selection; the layout held upright and sideways. On a desktop, the keys that step through the armies.
 - **powers**: another power (Carthage) can be played and resumed, autoplay is seen through the followed power's eyes, and you can take command of it.
 - **determinism**: the same seed gives exactly the same game, whatever sounds and effects do with their own random numbers, and a war saved and loaded goes on exactly as if it had never stopped.
@@ -123,6 +128,8 @@ The game is a static site, so any static host works too (Netlify, Cloudflare Pag
 - **Interface**: `src/styles/main.css` and the markup in `index.html`. Colours are CSS variables at the top of the stylesheet.
 - **3D world**: each part has its own module in `src/render/`. Soldiers are in `crowds.js` (instanced, so hundreds stay cheap), cities and walls in `cities.js`, the painted ground in `terrain.js`, light, shadows and clouds in `atmosphere.js`.
 - **Unit models (close up)**: armies near the camera are drawn with detailed models, the rest with the light procedural soldiers of `crowds.js`. The models are built in code from a base soldier with a skeleton (`tools/blender/soldier_base.py`), posed and dressed per unit (`tools/blender/units.py`), and exported to `src/assets/units/<unit>.glb`: `python3 tools/blender/units.py spear` with the `bpy` module (`pip install bpy`), or *Run Script* in Blender. `src/render/models.js` lists the files (`MODEL_URLS`) and loads them in the background; a unit without a file keeps its light model up close. A model from elsewhere works too if it follows the same rules: Blender metres (the game scales by 0.2), feet at 0, facing Blender's front (-Y), plain colours per material with `tint` for the power's colour, and the vertex attributes `_part` (1 and 2 the legs, 3 the weapon arm, 4 a siege engine's throwing arm) and `_wave` (cloth). Keep a close-up model under about a thousand triangles: up to `NEAR_CAP` of them are drawn at once.
+- **Cities**: `src/render/citygen.js` lays a city out the way procedural city tools do, at the scale of a town: streets from the gates the map's roads arrive at, then blocks and plots, then a building on each plot from its culture's rules, then the landmarks of the improvements it has built. Each culture is a module in `src/render/city/` (`roman.js`, `punic.js`, `gaul.js`, `egypt.js`, with what they share in `kit.js`): its planner (a grid for Rome, Carthage and Egypt, paths and darts thrown for a Gaulish oppidum), its buildings, its palette and its walls. A city takes the style of the power that starts nearest to it and keeps it when it changes hands. Everything comes from the city's seed, and each block (or a Gaulish town's houses) from a seed of its own, so a new forum only replaces the houses on its ground. Houses keep off the rivers that run through a city, and its main streets and gate roads cross them on bridges. Seen from afar (`CITY_NEAR_IN` in `cities.js`), a city is drawn without its small things (doors, windows, jars, posts); the full version is built the first time the camera comes close. Try changes in the city lab (`npm run citylab`), which builds every culture at every size with the game's own code.
+- **Landmark models**: the Roman temple and amphitheatre, the Egyptian pylon and lighthouse, the Punic temple and the Gaulish chief's hall are modelled in Blender by `tools/blender/landmarks.py` (`python3 tools/blender/landmarks.py` with the `bpy` module, or *Run Script* in Blender) and exported to `src/assets/landmarks/<key>.glb`. `src/render/landmarkModels.js` loads them in the background and the cities are rebuilt once they arrive; the builders place them with `model()` (`render/city/kit.js`), scaled to the ground they are given, and draw their procedural landmark when a file is missing. A model of your own works if it is one mesh in plain colours, standing on 0, its front toward Blender's -Y.
 - **three.js** is pinned to 0.149.0. Upgrading past r152 changes colour management and r155 changes light intensities, so plan a visual pass when you upgrade.
 
 ## Known issues
